@@ -1,4 +1,5 @@
 """R5: save the day's art and compare an old piece with a recent one.
+R9: edit and delete saved pieces, and find pieces whose copy has gone missing.
 
 No input/print here; dates are passed in. Files are copied into an art folder next
 to the data file so the history survives the originals being moved or deleted.
@@ -58,37 +59,40 @@ def save_art(state, today, source, goal, skill, folder):
 
 # ---------- picking pieces to compare ----------
 
-def pieces(state, goal, skill):
-    return [a for a in state["art"] if a["goal"] == goal and a["skill"] == skill]
+def pieces(state, goal, skill, folder=None):
+    """A pair's pieces. With `folder`, pieces whose copy is missing are left out (R9)."""
+    return [a for a in state["art"] if a["goal"] == goal and a["skill"] == skill
+            and (folder is None or (Path(folder) / a["file"]).is_file())]
 
 
-def oldest_newest(state, goal, skill):
+def oldest_newest(state, goal, skill, folder=None):
     """Earliest-dated piece (first saved on ties) and latest (last saved on ties)."""
-    items = pieces(state, goal, skill)
+    items = pieces(state, goal, skill, folder)
     oldest = min(items, key=lambda a: a["date"])                 # min keeps the first
     newest = max(reversed(items), key=lambda a: a["date"])       # max keeps the last
     return oldest, newest
 
 
-def _gap_days(state, goal, skill):
-    old, new = oldest_newest(state, goal, skill)
+def _gap_days(state, goal, skill, folder=None):
+    old, new = oldest_newest(state, goal, skill, folder)
     return (planner.parse_date(new["date"]) - planner.parse_date(old["date"])).days
 
 
-def comparable_pairs(state):
+def comparable_pairs(state, folder=None):
     """Pairs with at least two pieces, for a manual comparison (any gap)."""
-    return [p for p in planner.work_options(state) if len(pieces(state, *p)) >= 2]
+    return [p for p in planner.work_options(state) if len(pieces(state, *p, folder)) >= 2]
 
 
-def eligible_pairs(state):
+def eligible_pairs(state, folder=None):
     """Pairs whose newest piece is at least 28 days newer than the oldest."""
-    return [p for p in comparable_pairs(state) if _gap_days(state, *p) >= MIN_COMPARE_DAYS]
+    return [p for p in comparable_pairs(state, folder)
+            if _gap_days(state, *p, folder) >= MIN_COMPARE_DAYS]
 
 
-def comparison_due(state, today):
+def comparison_due(state, today, folder=None):
     month = today.isoformat()[:7]
     done = any(c["date"][:7] == month for c in state["comparisons"])
-    return not done and bool(eligible_pairs(state))
+    return not done and bool(eligible_pairs(state, folder))
 
 
 def _last_compared(state, pair):
@@ -96,11 +100,11 @@ def _last_compared(state, pair):
     return max(dates) if dates else ""  # "" sorts before any date: never compared first
 
 
-def monthly_comparison(state, today):
+def monthly_comparison(state, today, folder=None):
     """If a comparison is due, pick and record the pair to show. Else None."""
-    if not comparison_due(state, today):
+    if not comparison_due(state, today, folder):
         return None
-    pairs = eligible_pairs(state)  # already in roadmap order; min() keeps the first tie
+    pairs = eligible_pairs(state, folder)  # roadmap order; min() keeps the first tie
     goal, skill = min(pairs, key=lambda p: _last_compared(state, p))
     state["comparisons"].append({"date": today.isoformat(), "goal": goal, "skill": skill})
     return goal, skill
@@ -129,12 +133,50 @@ img {{ max-width: 100%; max-height: 80vh; }}
 
 def write_comparison(state, goal, skill, folder):
     """Write compare.html (oldest on the left, newest on the right) and return its path."""
-    old, new = oldest_newest(state, goal, skill)
+    old, new = oldest_newest(state, goal, skill, folder)
     esc = html.escape
     page = Path(folder) / COMPARE_PAGE
     page.parent.mkdir(parents=True, exist_ok=True)
     page.write_text(PAGE.format(
-        title=esc("{} / {}".format(goal, skill)), days=_gap_days(state, goal, skill),
+        title=esc("{} / {}".format(goal, skill)),
+        days=_gap_days(state, goal, skill, folder),
         old_src=esc(old["file"]), old_date=esc(old["date"]),
         new_src=esc(new["file"]), new_date=esc(new["date"])), encoding="utf-8")
     return page
+
+
+# ---------- R9: edit, delete and check saved pieces ----------
+
+def _art_index(state, index):
+    if isinstance(index, bool) or not isinstance(index, int) \
+            or not 0 <= index < len(state["art"]):
+        raise ValueError("There is no art piece number {}".format(index))
+    return index
+
+
+def edit_art(state, index, goal, skill):
+    """Change a piece's goal/skill tag. Its date and copied file stay the same."""
+    entry = state["art"][_art_index(state, index)]
+    if (goal, skill) not in planner.work_options(state):
+        raise ValueError("{} / {} is not part of your goals".format(goal, skill))
+    entry["goal"], entry["skill"] = goal, skill
+    return entry
+
+
+def forget_art(state, index):
+    """Remove a piece's entry only (its copy is already missing)."""
+    return state["art"].pop(_art_index(state, index))
+
+
+def delete_art(state, index, folder):
+    """Remove a piece's entry and its copy in `folder`. The original is never touched."""
+    entry = forget_art(state, index)
+    copy = Path(folder) / entry["file"]
+    if copy.is_file():
+        copy.unlink()
+    return entry
+
+
+def missing_art(state, folder):
+    """Indexes of pieces whose copy in `folder` no longer exists."""
+    return [i for i, a in enumerate(state["art"]) if not (Path(folder) / a["file"]).is_file()]
