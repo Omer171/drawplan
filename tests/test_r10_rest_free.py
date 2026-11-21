@@ -308,7 +308,7 @@ def test_r10_cli_task_on_a_rest_day_says_rest(monkeypatch, capsys, manga, data_f
     manga["rest_days"] = [TODAY.isoformat()]
     storage.save(manga, data_file)
     out = run_cli(monkeypatch, capsys, data_file, ["3", "q"], TODAY)
-    assert "rest day" in out.lower()
+    assert "Today is your planned rest day" in out
     assert storage.load(data_file)["tasks"] == {}
 
 

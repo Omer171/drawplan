@@ -17,9 +17,10 @@ drawplan
   7) Weekly summary
   8) Set a skill target
   9) Edit or delete a log or art piece
- 10) Quit"""
+ 10) Plan a rest day
+ 11) Quit"""
 
-QUIT = ("10", "q", "quit")
+QUIT = ("11", "q", "quit")
 NEEDS_GOALS = ("4", "5", "8")
 
 
@@ -49,6 +50,10 @@ def add_goal(state, today):
 
 
 def show_task(state, today):
+    if planner.is_rest_day(state, today):
+        print("Today is your planned rest day: no task. Enjoy the break; your streak "
+              "is safe. You can still log if you draw anyway.")
+        return False
     task = planner.daily_task(state, today)
     if task is not None:
         print("Today: " + task["text"])
@@ -270,6 +275,40 @@ def edit_or_delete(state, today, folder):
     return True
 
 
+# ---------- R10: planned rest days ----------
+
+def plan_rest_day(state, today):
+    """Mark a future date as a rest day, or cancel an upcoming one."""
+    print("Plan a rest day (one per week, from tomorrow on)")
+    upcoming = planner.upcoming_rest_days(state, today)
+    if upcoming:
+        print("Upcoming rest days:")
+        for i, day in enumerate(upcoming, 1):
+            print("  {}) {} ({})".format(i, day.isoformat(), day.strftime("%A")))
+    raw = input("Date to rest (YYYY-MM-DD){}, or Enter to go back: ".format(
+        ", a number to cancel one" if upcoming else "")).strip()
+    if not raw:
+        return False
+    try:
+        if raw.isdigit() and 1 <= int(raw) <= len(upcoming):
+            day = upcoming[int(raw) - 1]
+            planner.cancel_rest_day(state, day, today)
+            print("Rest day on {} cancelled.".format(day.isoformat()))
+            return True
+        try:
+            day = dt.date.fromisoformat(raw)
+        except ValueError:
+            print("Not a date: {}".format(raw))
+            return False
+        planner.mark_rest_day(state, day, today)
+    except ValueError as exc:
+        print(exc)
+        return False
+    print("{} ({}) is now a rest day. It won't count as skipped or break your "
+          "streak.".format(day.isoformat(), day.strftime("%A")))
+    return True
+
+
 def check_missing_art(state, folder):
     """R9: on start, offer to remove entries whose image copy is missing."""
     remove = []
@@ -303,7 +342,8 @@ def _loop(state, path, today):
     actions = {"1": add_goal, "3": show_task, "4": log_today,
                "5": lambda st, d: save_art(st, d, folder),
                "6": lambda st, d: compare_art(st, folder), "7": weekly_summary,
-               "8": set_target, "9": lambda st, d: edit_or_delete(st, d, folder)}
+               "8": set_target, "9": lambda st, d: edit_or_delete(st, d, folder),
+               "10": plan_rest_day}
     start = today or dt.date.today()
     changed = check_missing_art(state, folder)
     changed = due_weekly_summary(state, start) or changed
@@ -324,4 +364,4 @@ def _loop(state, path, today):
             if actions[choice](state, day):  # True means state changed
                 storage.save(state, path)
         else:
-            print("Choose 1-10.")
+            print("Choose 1-11.")
