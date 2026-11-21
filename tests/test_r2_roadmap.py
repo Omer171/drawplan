@@ -78,14 +78,6 @@ def test_r2_overall_hours_use_total_study_time(state):
     assert planner.goal_minutes(state, "manga") == 0
 
 
-def test_r2_level_goes_up_every_ten_hours(state):
-    assert planner.level(state) == 1
-    log(state, 0, total=599, goal=None, skill=None)
-    assert planner.level(state) == 1
-    log(state, 0, total=1, goal=None, skill=None)
-    assert planner.level(state) == 2
-
-
 def test_r2_streak_counts_consecutive_days(state):
     planner.add_goal(state, "manga", TODAY)
     for back in (0, 1, 2, 4):
@@ -106,7 +98,8 @@ def test_r2_roadmap_marks_reached_milestones(state):
     text = planner.render_roadmap(state, TODAY)
     assert "[x] 1 hour on manga" in text
     assert "[ ] 10 hours on manga" in text
-    assert "Level 1" in text and "Streak: 1 day" in text
+    # 10 study XP + 100 XP for the "1 hour" milestone (R6) -> level 2
+    assert "Level 2" in text and "Streak: 1 day" in text
 
 
 def test_r2_roadmap_is_plain_ascii(state):
