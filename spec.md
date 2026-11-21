@@ -1,10 +1,12 @@
-# drawplan — specification (rounds 1–3)
+# drawplan — specification (rounds 1–4)
 
 drawplan is a command-line app for people learning to draw. They pick art goals and get a
 roadmap with a progress bar for each skill and milestones to reach. Each day it gives them
 one task, rotating through their skills, and after they log what they actually did it
 adjusts the plan. Each week it sums up what they did and focuses the next week on the
-skill they neglected.
+skill they neglected. A skill that reaches its hour target is mastered: it leaves the
+rotation and gets a short review task every two weeks. Logs and art can be edited or
+deleted from the menu.
 
 Clarifications agreed with the product owner before this spec was written:
 
@@ -48,6 +50,29 @@ Round 3 clarifications (agreed before this update):
 - **Skipped** = every counted day of the week without a completed task, including days
   the app was not opened. Completed + skipped = the number of counted days.
 
+Round 4 clarifications (agreed before this update):
+
+- R8 review: a mastered skill is due for a review **14 days** after the later of the day
+  it was mastered and its last task. The review **takes that day's task slot** and is
+  **half the normal length** (at least 10 minutes). If several are due, the one waiting
+  longest goes first.
+- R8 targets are set from a **menu item, any time**, in whole hours from 1 to 1000, with
+  20 as the default. Before mastery a target can go up or down. Once a skill is mastered,
+  its target can only be raised, which takes it out of mastered again.
+- R8 raising a mastered target **keeps the earlier mastery**: "Master inking (15h)" stays
+  reached with its XP, and a new "Master inking" milestone for the new target appears.
+- R7 neglect now compares each skill's minutes **as a share of its own target**.
+  Mastered skills take no part.
+- R9 editing or deleting a log **rechecks that day's task completion** against the day's
+  first remaining log. The task length (`task_minutes`) is not rewound.
+- R9 a log's four R4 answers can be edited, and an art piece's goal/skill tag. Dates and
+  images stay fixed.
+- R9 deleting an art piece also deletes its copy in `drawplan_art/`, never the original.
+- R9 a missing image the user chooses to keep is **not remembered**: the app asks again
+  at every start. Comparisons skip missing pieces meanwhile.
+- (Our own defaults, see docs/decisions/0008: on a focus day the focus task wins over a
+  due review, which then waits for the next non-focus day.)
+
 ## Data
 
 Everything is saved in one JSON file, `drawplan_data.json`, in the current directory. The
@@ -68,7 +93,9 @@ half-written file.
   "art": [{"date": "2026-11-20", "goal": "manga", "skill": "inking",
            "file": "2026-11-20_manga_inking_1.png", "original": "C:/pics/ink.png"}],
   "comparisons": [{"date": "2026-11-20", "goal": "manga", "skill": "inking"}],
-  "summaries": ["2026-11-09"]
+  "summaries": ["2026-11-09"],
+  "targets": {"manga": {"inking": 15}},
+  "mastered_targets": {"manga": {"inking": [10]}}
 }
 ```
 
@@ -78,11 +105,16 @@ docs/decisions/0001). `art` and `comparisons` were added in round 2, and `summar
 (the Monday of each week whose summary was shown at startup) in round 3. A file without
 them loads as if they were empty lists, so the file version stays 1. The weekly focus
 skill is computed from the logs and is never stored (see docs/decisions/0004).
+Round 4 adds `targets` (hour targets the user changed; any skill not listed has 20 hours)
+and `mastered_targets` (earlier targets of a skill that was mastered and then raised).
+Both default to `{}`. A review task has `"review": true`. Whether a skill is mastered is
+always computed from the logs and its target, never stored (see docs/decisions/0007).
 
 ## R1 — Choose and save an art goal
 
 - The goal catalog is: portraits, figure, anatomy, manga, comic, animation. Each catalog
-  goal has a fixed list of skills, and every skill has a target of 20 hours.
+  goal has a fixed list of skills. Every skill starts with a target of 20 hours, which the
+  user can change (R8).
 - The user picks a goal from the catalog by number or by name. The pick is saved right away.
 - Adding a goal that is already active is rejected. So is a name that isn't in the catalog.
 - More than one goal can be active at a time. Goals stay in the order they were added.
@@ -92,12 +124,15 @@ skill is computed from the logs and is never stored (see docs/decisions/0004).
 For each active goal, the roadmap shows:
 
 - One text progress bar per skill, such as `inking      [######--------------]  30%  6.0/20h`.
-  A skill bar is filled by the on-goal minutes logged for that goal and skill, and stops
-  at 100%.
+  A skill bar is filled by the on-goal minutes logged for that goal and skill against
+  that skill's own target (R8), and stops at 100%. A mastered skill's line ends with
+  `MASTERED`.
 - Milestones, each shown as reached `[x]` or not yet `[ ]`:
   - goal hours: 1, 10, 50 and 100 on-goal hours for this goal;
   - drawings: 10, 50 and 100 drawings logged for this goal;
-  - one "Master <skill>" milestone for each skill (skill at 100%).
+  - one "Master <skill>" milestone for each skill (skill at 100% of its current target);
+  - one "Master <skill> (<N>h)" milestone for each earlier target in `mastered_targets`,
+    reached when the skill's on-goal hours are at least N (R8).
 
 Overall (across all goals), it shows:
 
@@ -113,8 +148,8 @@ The roadmap uses plain ASCII so it renders in any terminal.
 
 - The first time the user asks for the task on a given date, drawplan picks it and saves
   it. Asking again on the same date returns the same task.
-- **Rotation.** The pairs are every active goal/skill pair in roadmap order (goals in the
-  order added, skills in catalog order). The task goes to the pair right after the
+- **Rotation.** The pairs are every active goal/skill pair that is not mastered (R8), in
+  roadmap order (goals in the order added, skills in catalog order). The task goes to the pair right after the
   **anchor**, wrapping around at the end. The anchor is the pair of the latest task saved
   for an earlier date. With no earlier task, the task goes to the first pair. A goal added
   later joins the rotation in its roadmap place.
@@ -123,9 +158,15 @@ The roadmap uses plain ASCII so it renders in any terminal.
   pair. On the other days the rotation skips the focus pair: the anchor is the latest
   earlier task that was not for the focus pair, and the next pair after it that is not the
   focus pair is chosen. A focus-day task says in its text that it is this week's focus
-  skill.
+  skill. If the focus pair is mastered by the time the task is picked, there is no focus.
+- **Review (R8).** On a day that is not a focus day, if a mastered pair's review is due,
+  the task is a review of it instead of the rotation task.
+- The order is: focus day, then due review, then rotation. If every pair is mastered and
+  no review is due, there is no task, and the user is told to raise a target or add a
+  goal.
 - (Round 1 rule, replaced in round 3: the task went to the skill furthest behind.)
-- The task length is the saved `task_minutes`, which starts at 30.
+- The task length is the saved `task_minutes`, which starts at 30. A review task is half
+  of it, rounded down, and at least 10.
 - The task text names the goal, the skill, the minutes and one concrete exercise. The
   exercise is chosen from that skill's exercise list based on the date, so it changes from
   day to day.
@@ -153,7 +194,11 @@ Adjustment:
   minutes ≥ the task's minutes, `task_minutes` goes up by 5 (max 120) and the task is
   marked `completed`. Otherwise it goes down by 5 (min 10). Which skill they worked on
   doesn't matter for this. Later logs on the same date, and logs on dates without a task,
-  do not change `task_minutes` or `completed`.
+  do not change `task_minutes` or `completed`. Review tasks follow the same rule.
+- `completed` always follows the **first** log of the date. Editing or deleting logs (R9)
+  rechecks it: completed if the first remaining log's on-goal minutes are at least the
+  task's minutes, not completed if no log remains. `task_minutes` is never rewound, and a
+  task already adjusted is not adjusted again.
 
 ## R5 — Save the day's art and compare old with new
 
@@ -168,6 +213,8 @@ Saving a piece:
   the first number that doesn't collide with an existing file. The entry in `art`
   records the date, goal, skill, copied file name and original path.
 - Several pieces can be saved on the same day.
+- Pieces whose copy is missing from `drawplan_art/` (R9) are left out of every comparison:
+  oldest/newest, eligibility and "Compare art".
 
 Monthly comparison:
 
@@ -220,10 +267,15 @@ A week runs Monday to Sunday. The summary of a week covers:
   the day the first goal was added. A counted day is **completed** if its task was
   completed (the R4 rule), and **skipped** otherwise, including days with no task at all.
 - **Most neglected skill:** only goals added on or before the week's Monday take part, so
-  a goal added mid-week is never flagged. Among their pairs, the one with the fewest
-  on-goal minutes in the week is neglected if its minutes are less than half the average
-  for those pairs. A tie goes to roadmap order. If no goal took part, or the average is 0,
-  or the lowest pair is not under half the average, nothing is neglected.
+  a goal added mid-week is never flagged. Mastered pairs take no part either (changed in
+  round 4, R8). Here mastered means mastered by the logs dated up to the week's Sunday,
+  against the current target. Each remaining pair's **share** is its on-goal minutes in
+  the week divided by its target minutes. The pair with the lowest share is neglected if
+  its share is less than half the average share for those pairs. A tie goes to roadmap
+  order. If no pair took part, or the average is 0, or the lowest pair is not under half
+  the average, nothing is neglected. (Rounds 1–3 compared raw minutes, which gives the
+  same result while every target is 20 hours.)
+- In "hours per skill", a pair mastered by the week's Sunday is marked `(mastered)`.
 - The summary text ends by naming the neglected skill and saying that next week's tasks
   focus on it on Mon, Wed, Fri and Sun. Otherwise it says the tasks will rotate through
   all skills.
@@ -239,8 +291,77 @@ Showing it:
 - The focus for a week comes only from the previous week's summary, whether or not that
   summary was ever shown.
 
+## R8 — Mastered skills, review tasks and hour targets
+
+Targets:
+
+- Every active goal/skill pair has an hour target. It is 20 unless the user set another
+  one in `targets`.
+- Menu item "Set a skill target": pick a pair, then enter whole hours from 1 to 1000.
+  - If the pair is not mastered, any value in that range is accepted, as long as it is
+    above every earlier target in `mastered_targets` for that pair.
+  - If the pair is mastered, the new target must be above the current one. The current
+    target is appended to `mastered_targets[goal][skill]` and the new one is saved. The
+    skill is then no longer mastered (unless its hours already reach the new target too).
+  - Anything else is rejected with a message, and nothing is saved.
+
+Mastery:
+
+- A pair is **mastered** while its on-goal minutes (all logs) are at least its target
+  minutes. It is computed, never stored, so a lower target or an edited log can change it.
+- A mastered pair leaves the R3 rotation and is never neglected (R7).
+- Its **mastery date** is the date of the log that first brought its running on-goal
+  total (logs in date order) up to its current target.
+- Its review is **due** 14 days after the later of its mastery date and the date of its
+  latest task before today (of any kind), and stays due on every later day until a task
+  is given for it.
+- When reviews are due for several pairs, the one with the earliest due date goes first;
+  ties go to roadmap order.
+- A review task's text names the goal, skill, minutes and an exercise from the skill's
+  list, and says it is a short review of a mastered skill.
+
+XP (R6) counts the "Master <skill> (<N>h)" milestones like any other milestone, so
+raising a target never takes XP away.
+
+## R9 — Edit and delete logs and art; check for missing art
+
+Choosing an entry (menu item "Edit or delete a log or art piece"):
+
+- The user picks logs or art, then either presses Enter to list the 20 most recent
+  entries (newest first) or types a date (YYYY-MM-DD) to list that day's entries. Each
+  line shows the entry's date and what it records. The user picks one by number, then
+  edits it, deletes it or goes back.
+
+Logs:
+
+- **Edit** asks the four R4 questions again, with the same checks. The date stays the
+  same. An invalid answer is rejected with a message, and the log is unchanged.
+- **Delete** asks for a yes/no confirmation first.
+- Afterwards the day's task completion is rechecked (R4). Everything else that is
+  derived (skill progress, mastery, milestones, XP, levels, streak, weekly summaries and
+  the focus for tasks not yet picked) follows from the changed logs. Tasks already
+  picked stay as they are.
+
+Art:
+
+- **Edit** changes the piece's goal/skill tag to another active pair. The date, the copy's
+  file name and the original path stay the same.
+- **Delete** asks for a yes/no confirmation, then removes the entry and its copy in
+  `drawplan_art/` if that copy exists. The user's original file is never touched.
+  Recorded monthly comparisons are kept.
+
+Missing art check:
+
+- When the app starts, before the weekly summary and the monthly comparison, it checks
+  each art entry's copy in `drawplan_art/`. For each missing one it shows the date, the
+  goal/skill and the file name, and asks whether to remove the entry.
+- Yes removes the entry. No keeps it, and nothing is recorded, so the app asks again at
+  the next start. A kept entry still counts as a drawing day for the streak, but is left
+  out of comparisons (R5).
+
 ## Running
 
 `python -m drawplan` opens a menu: add goal, show roadmap, today's task, log today, save
-art, compare art, weekly summary, quit. On start it shows the weekly summary (R7) and
-then the monthly comparison (R5) when they are due.
+art, compare art, weekly summary, set a skill target, edit or delete a log or art piece,
+quit (`10`, or `q`). On start it checks for missing art (R9), then shows the weekly
+summary (R7) and the monthly comparison (R5) when they are due.
