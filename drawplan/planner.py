@@ -434,3 +434,35 @@ def _neglected(pair_minutes):
 def focus_pair(state, day):
     """The pair this week's tasks focus on: last week's neglected skill, or None."""
     return week_summary(state, week_start(day) - dt.timedelta(days=7))["neglected"]
+
+
+def due_week_summary(state, today):
+    """R7: the last finished week's summary if it hasn't been shown yet; records it.
+
+    Returns None when it was already shown or no goal existed by that week's Sunday.
+    """
+    monday = last_finished_week(today)
+    sunday = monday + dt.timedelta(days=6)
+    if monday.isoformat() in state["summaries"] or not _goals_added_by(state, sunday):
+        return None
+    state["summaries"].append(monday.isoformat())
+    return week_summary(state, monday)
+
+
+def render_week_summary(summary):
+    lines = ["Week of {} to {}".format(summary["start"], summary["end"]),
+             "  {:.1f} total hours studied".format(summary["total_minutes"] / 60),
+             "  Hours per skill:"]
+    pairs = summary["skill_minutes"]
+    width = max((len("{} / {}".format(*p)) for p in pairs), default=0)
+    lines += ["    {:<{w}}  {:.1f}h".format("{} / {}".format(*p), m / 60, w=width)
+              for p, m in pairs.items()]
+    lines.append("  Tasks: {} completed, {} skipped".format(
+        summary["completed"], summary["skipped"]))
+    if summary["neglected"]:
+        goal, skill = summary["neglected"]
+        lines.append("  Most neglected: {} / {} ({:.1f}h). Next week's tasks focus on it "
+                     "on Mon, Wed, Fri and Sun.".format(goal, skill, pairs[(goal, skill)] / 60))
+    else:
+        lines.append("  No skill was neglected. Next week's tasks rotate through all skills.")
+    return "\n".join(lines)
