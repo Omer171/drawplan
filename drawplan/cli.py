@@ -14,7 +14,8 @@ drawplan
   4) Log today
   5) Save today's art
   6) Compare old and new art
-  7) Quit"""
+  7) Weekly summary
+  8) Quit"""
 
 
 def ask_int(prompt, lo=0, hi=None):
@@ -105,6 +106,24 @@ def monthly_comparison(state, today, folder):
     return True
 
 
+def weekly_summary(state, today):
+    """R7: show the last finished week's summary (menu item; not recorded)."""
+    monday = planner.last_finished_week(today)
+    print("Weekly summary")
+    print(planner.render_week_summary(planner.week_summary(state, monday)))
+    return False
+
+
+def due_weekly_summary(state, today):
+    """R7: on start, once a week has ended, show its summary once."""
+    summary = planner.due_week_summary(state, today)
+    if summary is None:
+        return False
+    print("Your week is done. Here is how it went:")
+    print(planner.render_week_summary(summary))
+    return True
+
+
 def log_today(state, today):
     before = _levels(state)
     total = ask_int("Total minutes you studied today: ")
@@ -147,14 +166,17 @@ def _loop(state, path, today):
     folder = gallery.art_dir(path)
     actions = {"1": add_goal, "3": show_task, "4": log_today,
                "5": lambda st, d: save_art(st, d, folder),
-               "6": lambda st, d: compare_art(st, folder)}
-    if monthly_comparison(state, today or dt.date.today(), folder):
+               "6": lambda st, d: compare_art(st, folder), "7": weekly_summary}
+    start = today or dt.date.today()
+    changed = due_weekly_summary(state, start)
+    changed = monthly_comparison(state, start, folder) or changed
+    if changed:
         storage.save(state, path)
     while True:
         print(MENU)
         choice = input("> ").strip().lower()
         day = today or dt.date.today()
-        if choice in ("7", "q", "quit"):
+        if choice in ("8", "q", "quit"):
             return
         if choice == "2":
             print(planner.render_roadmap(state, day))
@@ -164,4 +186,4 @@ def _loop(state, path, today):
             if actions[choice](state, day):  # True means state changed
                 storage.save(state, path)
         else:
-            print("Choose 1-7.")
+            print("Choose 1-8.")
