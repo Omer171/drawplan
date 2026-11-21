@@ -27,3 +27,10 @@ actually working on and how long they spent on the goal.
 * R5. The program should let the user save the art they made for the day by giving it the file path to the image, and it saves it with the date and which skill it was for. Every month the program should open a old piece next to a recent one for the same skill so the user can actually see there improvement, since thats the whole point of tracking it.
 * R6. To make it actually feel like a game the user should earn xp for every hour studied and every task completed, level up each skill separately (ex. anatomy lvl 4, panelling lvl 2), and have a streak for how many days in a row they drew. Hitting one of the major roadmarkers from R2 should give a big xp bonus.
 
+# Round 3 Requirements
+
+* R7. At the end of every week the program should give the user a summary of what they did, total hours, hours per skill, and tasks completed vs skipped. It should also find which skill the user has been neglecting the most and make the daily tasks from R3 focus more on that skill the next week.
+* R3 (changed in round 3). The program should everyday give the user a specific task to do for that day. The task should normally rotate between all the skills in the users goal, but if the weekly summary from R7 found a skill the user has been neglecting, than the tasks for the next week should focus more on that skill (ex. 3 or 4 days out of the 7) until it catches up with the others.            	     Whats changed:  originally R3 would only give you one task, but now it rotates the task based on all the skills you are learning, and neglected tasks get more days in the week to focus on them.
+
+
+
