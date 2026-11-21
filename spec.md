@@ -1,8 +1,10 @@
-# drawplan — specification (rounds 1–2)
+# drawplan — specification (rounds 1–3)
 
 drawplan is a command-line app for people learning to draw. They pick art goals and get a
 roadmap with a progress bar for each skill and milestones to reach. Each day it gives them
-one task, and after they log what they actually did it adjusts the plan.
+one task, rotating through their skills, and after they log what they actually did it
+adjusts the plan. Each week it sums up what they did and focuses the next week on the
+skill they neglected.
 
 Clarifications agreed with the product owner before this spec was written:
 
@@ -27,6 +29,23 @@ Round 2 clarifications (agreed before this update):
 - The streak only counts days the user actually drew: a log with total minutes > 0, or a
   saved art piece.
 
+Round 3 clarifications (agreed before this update):
+
+- R3 changed: tasks **rotate** through every goal/skill pair in roadmap order. Each day
+  takes the pair after the last task given, so a missed day never skips a skill. This
+  replaces the round 1 rule "the task goes to the skill furthest behind". Pointing tasks
+  at a neglected skill is now done weekly by R7.
+- R7 weeks are **calendar weeks, Monday to Sunday**. The summary of the week that just
+  ended is shown **once, the first time the app starts after it ends**, and a menu item
+  shows it at any time. "Next week" is the week right after the summarized one.
+- The **neglected** skill is the goal/skill pair with the fewest on-goal minutes that
+  week, but only if that is **less than half the average** of all pairs. A balanced week
+  has none. Next week it gets the task on **4 of 7 days (Mon, Wed, Fri, Sun)**, and the
+  other days rotate. Each week is checked again, so the focus continues until the skill
+  catches up.
+- **Skipped** = every counted day of the week without a completed task, including days
+  the app was not opened. Completed + skipped = the number of counted days.
+
 ## Data
 
 Everything is saved in one JSON file, `drawplan_data.json`, in the current directory. The
@@ -46,14 +65,17 @@ half-written file.
   "task_minutes": 35,
   "art": [{"date": "2026-11-20", "goal": "manga", "skill": "inking",
            "file": "2026-11-20_manga_inking_1.png", "original": "C:/pics/ink.png"}],
-  "comparisons": [{"date": "2026-11-20", "goal": "manga", "skill": "inking"}]
+  "comparisons": [{"date": "2026-11-20", "goal": "manga", "skill": "inking"}],
+  "summaries": ["2026-11-09"]
 }
 ```
 
 The logs are the source of truth. Skill progress, hours, drawing counts, XP and levels
 are always computed from the logs, tasks and art and are never stored (see
-docs/decisions/0001). `art` and `comparisons` were added in round 2. A round 1 file
-without them loads as if they were empty lists, so the file version stays 1.
+docs/decisions/0001). `art` and `comparisons` were added in round 2, and `summaries`
+(the Monday of each week whose summary was shown at startup) in round 3. A file without
+them loads as if they were empty lists, so the file version stays 1. The weekly focus
+skill is computed from the logs and is never stored (see docs/decisions/0004).
 
 ## R1 — Choose and save an art goal
 
@@ -85,13 +107,22 @@ Overall (across all goals), it shows:
 
 The roadmap uses plain ASCII so it renders in any terminal.
 
-## R3 — One task per day
+## R3 — One task per day, rotating through the skills (changed in round 3)
 
 - The first time the user asks for the task on a given date, drawplan picks it and saves
   it. Asking again on the same date returns the same task.
-- The task's skill is the one furthest behind across all active goals, measured as minutes
-  logged divided by the skill's target. A tie goes to the goal added first, then to the
-  skill listed first.
+- **Rotation.** The pairs are every active goal/skill pair in roadmap order (goals in the
+  order added, skills in catalog order). The task goes to the pair right after the
+  **anchor**, wrapping around at the end. The anchor is the pair of the latest task saved
+  for an earlier date. With no earlier task, the task goes to the first pair. A goal added
+  later joins the rotation in its roadmap place.
+- **Focus week (R7).** If the summary of the previous calendar week found a neglected
+  pair, then on Monday, Wednesday, Friday and Sunday of this week the task goes to that
+  pair. On the other days the rotation skips the focus pair: the anchor is the latest
+  earlier task that was not for the focus pair, and the next pair after it that is not the
+  focus pair is chosen. A focus-day task says in its text that it is this week's focus
+  skill.
+- (Round 1 rule, replaced in round 3: the task went to the skill furthest behind.)
 - The task length is the saved `task_minutes`, which starts at 30.
 - The task text names the goal, the skill, the minutes and one concrete exercise. The
   exercise is chosen from that skill's exercise list based on the date, so it changes from
@@ -113,8 +144,9 @@ Adjustment:
 
 - **Credit the actual skill.** The on-goal minutes go to the goal/skill the user picked,
   even if that day's task assigned a different one.
-- **Target the neglected skill.** Since progress is computed from the logs, the next day's
-  task automatically goes to whatever skill is furthest behind after this log.
+- **Target the neglected skill.** Changed in round 3: a single log no longer redirects the
+  next day's task. The skill neglected over a week gets more task days the next week (R7,
+  R3).
 - **Scale the task length.** On the first log of a date that has a task, if on-goal
   minutes ≥ the task's minutes, `task_minutes` goes up by 5 (max 120) and the task is
   marked `completed`. Otherwise it goes down by 5 (min 10). Which skill they worked on
@@ -175,7 +207,38 @@ Roadmap additions:
 
 The streak is defined under R2.
 
+## R7 — Weekly summary and neglected skill
+
+A week runs Monday to Sunday. The summary of a week covers:
+
+- **Total hours:** the total study minutes of every log dated in the week, in hours.
+- **Hours per skill:** the on-goal minutes for each goal/skill pair of every goal added
+  on or before the week's Sunday, in roadmap order, in hours.
+- **Tasks completed vs skipped:** the counted days are the days of the week on or after
+  the day the first goal was added. A counted day is **completed** if its task was
+  completed (the R4 rule), and **skipped** otherwise, including days with no task at all.
+- **Most neglected skill:** only goals added on or before the week's Monday take part, so
+  a goal added mid-week is never flagged. Among their pairs, the one with the fewest
+  on-goal minutes in the week is neglected if its minutes are less than half the average
+  for those pairs. A tie goes to roadmap order. If no goal took part, or the average is 0,
+  or the lowest pair is not under half the average, nothing is neglected.
+- The summary text ends by naming the neglected skill and saying that next week's tasks
+  focus on it on Mon, Wed, Fri and Sun. Otherwise it says the tasks will rotate through
+  all skills.
+
+Showing it:
+
+- The **last finished week** is the week before the current one. When the app starts, if
+  that week has not been shown yet (its Monday is not in `summaries`) and the first goal
+  was added on or before its Sunday, the app shows its summary and records its Monday in
+  `summaries`. Only the last finished week is shown, never a backlog of older weeks.
+- The menu item "Weekly summary" shows the last finished week's summary at any time.
+  This is not recorded.
+- The focus for a week comes only from the previous week's summary, whether or not that
+  summary was ever shown.
+
 ## Running
 
 `python -m drawplan` opens a menu: add goal, show roadmap, today's task, log today, save
-art, compare art, quit. On start it shows the monthly comparison if one is due (R5).
+art, compare art, weekly summary, quit. On start it shows the weekly summary (R7) and
+then the monthly comparison (R5) when they are due.
