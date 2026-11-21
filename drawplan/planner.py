@@ -3,6 +3,8 @@
 Pure functions over a state dict. No input/print here; dates are passed in.
 """
 
+import datetime as dt
+
 CATALOG = {
     "portraits": ["proportions", "features", "values", "likeness"],
     "figure": ["gesture", "proportions", "anatomy", "poses"],
@@ -105,7 +107,6 @@ def level(state):
 
 def streak(state, today):
     """Consecutive days with a log, ending today (or yesterday if today has none yet)."""
-    import datetime as dt
     days = {e["date"] for e in state["logs"]}
     day = today if today.isoformat() in days else today - dt.timedelta(days=1)
     count = 0
@@ -168,3 +169,94 @@ def render_roadmap(state, today):
     lines.append("== OVERALL ==")
     lines += ["    {} {}".format(_check(d), label) for label, d in overall_milestones(state)]
     return "\n".join(lines)
+
+
+# ---------- R3: one task per day ----------
+
+EXERCISES = {
+    "proportions": ["measure and draw 5 heads using the half-way eye line",
+                    "draw 10 quick figures checking head-count proportions",
+                    "copy 3 photos, measuring angles with your pencil"],
+    "features": ["fill a page with 10 eyes from different angles",
+                 "draw 8 noses and 8 mouths from reference",
+                 "draw 6 ears, then 6 hairlines"],
+    "values": ["make a 9-step value scale, then shade 3 spheres",
+               "do 5 small 3-value thumbnail studies of faces",
+               "shade a portrait photo using only 4 values"],
+    "likeness": ["draw one portrait from a photo, then check it against a tracing",
+                 "do 4 ten-minute portraits of the same person",
+                 "draw a friend or family member from life for the whole session"],
+    "gesture": ["do 20 one-minute gesture drawings",
+                "do 10 two-minute gestures focusing on the line of action",
+                "draw 30 thirty-second gestures of people in motion"],
+    "anatomy": ["study and draw the torso muscles from 3 angles",
+                "draw 5 arms and 5 legs with muscle groups labelled",
+                "copy 2 pages from an anatomy reference"],
+    "poses": ["draw 8 dynamic poses from reference",
+              "draw one pose from 3 different camera angles",
+              "invent 5 action poses using a mannequin first"],
+    "skeleton": ["draw the skull from front, side and 3/4",
+                 "draw the rib cage and pelvis from 3 angles",
+                 "draw a full skeleton standing, then sitting"],
+    "muscles": ["draw the shoulder and arm muscles as simple shapes",
+                "draw the leg muscles from front and back",
+                "draw the back muscles over a skeleton sketch"],
+    "forms": ["draw 30 boxes, cylinders and spheres in perspective",
+              "build a figure out of simple 3D forms only",
+              "draw hands as boxes and cylinders, 6 times"],
+    "paneling": ["thumbnail a 6-panel page from a short scene you invent",
+                 "copy the panel layout of 2 pages you like",
+                 "draw 3 layouts of the same page and pick the clearest"],
+    "penning": ["fill a page with line-weight practice: thick to thin strokes",
+                "pen over 3 of your old sketches with confident lines",
+                "draw 50 controlled straight lines and 50 curves"],
+    "inking": ["ink one finished panel with spotted blacks",
+               "do a hatching and cross-hatching texture sheet",
+               "ink the same sketch twice: brush, then pen"],
+    "expressions": ["draw one face with 12 different emotions",
+                    "draw 6 expressions from a mirror",
+                    "draw a character reacting to 4 different events"],
+    "storytelling": ["write and thumbnail a 4-panel strip",
+                     "redraw one page to make its story clearer",
+                     "thumbnail a scene from 3 different camera angles"],
+    "lettering": ["practice a full alphabet of comic lettering, twice",
+                  "letter 3 panels with balloons and tails",
+                  "design 5 sound effects"],
+    "timing": ["animate a bouncing ball in 12 frames",
+               "chart the timing of a pendulum swing",
+               "animate a ball bounce with ease in and ease out"],
+    "keyframes": ["draw the 3 keyframes of a jump",
+                  "draw key poses for a walk cycle",
+                  "draw keyframes of a character turning their head"],
+    "character design": ["design one character in 3 silhouettes, pick the best",
+                         "draw a turnaround of a character: front, side, back",
+                         "draw your character with 5 different props"],
+}
+
+
+def _pick_skill(state):
+    """The (goal, skill) furthest behind its target; ties go to earlier goal, then skill."""
+    best = None
+    for goal in active_goals(state):
+        for skill, minutes in skill_progress(state, goal).items():
+            frac = minutes / SKILL_TARGET_MINUTES
+            if best is None or frac < best[0]:
+                best = (frac, goal, skill)
+    return best[1], best[2]
+
+
+def daily_task(state, today):
+    """Return today's task, picking and saving it the first time it is asked for."""
+    key = today.isoformat()
+    if key in state["tasks"]:
+        return state["tasks"][key]
+    if not active_goals(state):
+        return None
+    goal, skill = _pick_skill(state)
+    minutes = state["task_minutes"]
+    exercises = EXERCISES[skill]
+    exercise = exercises[today.toordinal() % len(exercises)]
+    task = {"goal": goal, "skill": skill, "minutes": minutes, "adjusted": False,
+            "text": "Spend {} minutes on {} ({}): {}.".format(minutes, skill, goal, exercise)}
+    state["tasks"][key] = task
+    return task
