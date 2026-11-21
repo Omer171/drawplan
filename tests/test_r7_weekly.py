@@ -134,7 +134,7 @@ def test_r7_summary_text_shows_hours_tasks_and_neglected_skill(manga):
     assert "2026-11-09" in text and "2026-11-15" in text
     assert "1.5 total hours" in text
     assert "paneling" in text and "1.0h" in text
-    assert "1 completed, 6 skipped" in text
+    assert "1 completed, 0 free practice, 0 rest days, 6 skipped" in text  # R10 wording
     assert "anatomy" in text.split("neglected")[-1]                  # first 0-minute skill
     assert "Mon, Wed, Fri and Sun" in text
 
