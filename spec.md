@@ -1,4 +1,4 @@
-# drawplan — specification (rounds 1–4)
+# drawplan — specification (rounds 1–5)
 
 drawplan is a command-line app for people learning to draw. They pick art goals and get a
 roadmap with a progress bar for each skill and milestones to reach. Each day it gives them
@@ -6,7 +6,8 @@ one task, rotating through their skills, and after they log what they actually d
 adjusts the plan. Each week it sums up what they did and focuses the next week on the
 skill they neglected. A skill that reaches its hour target is mastered: it leaves the
 rotation and gets a short review task every two weeks. Logs and art can be edited or
-deleted from the menu.
+deleted from the menu. Practising without asking for the task counts as free practice,
+and one rest day a week can be planned ahead without breaking the streak.
 
 Clarifications agreed with the product owner before this spec was written:
 
@@ -73,6 +74,23 @@ Round 4 clarifications (agreed before this update):
 - (Our own defaults, see docs/decisions/0008: on a focus day the focus task wins over a
   due review, which then waits for the next non-focus day.)
 
+Round 5 clarifications (agreed before this update):
+
+- R10 a day is **free practice** when its first log with more than 0 total minutes came
+  **before** that day's task was asked for, or the day never got a task. Asking for the
+  task later that day still gives one, but the day stays free practice: that task can't
+  be completed and doesn't change the task length.
+- R10 a rest day can be marked for **any date from tomorrow on**, **at most one per
+  calendar week** (Mon–Sun). It can be cancelled until that day arrives. Today and past
+  days can never be marked or cancelled.
+- R10 a rest day **bridges** the streak: it doesn't break it and doesn't add to it.
+- R10 a rest day gets **no task**. The rotation continues the next day where it stopped.
+  The user can still log on a rest day; the log counts for hours, XP and the streak like
+  any other, but the weekly summary still lists the day as a rest day.
+- (Our own defaults, see docs/decisions/0009 and 0010: free practice is remembered on the
+  task as `"free_practice": true` when a task is picked after practice was logged; a rest
+  day on a focus day costs the focus skill that day.)
+
 ## Data
 
 Everything is saved in one JSON file, `drawplan_data.json`, in the current directory. The
@@ -95,7 +113,8 @@ half-written file.
   "comparisons": [{"date": "2026-11-20", "goal": "manga", "skill": "inking"}],
   "summaries": ["2026-11-09"],
   "targets": {"manga": {"inking": 15}},
-  "mastered_targets": {"manga": {"inking": [10]}}
+  "mastered_targets": {"manga": {"inking": [10]}},
+  "rest_days": ["2026-11-24"]
 }
 ```
 
@@ -109,6 +128,8 @@ Round 4 adds `targets` (hour targets the user changed; any skill not listed has 
 and `mastered_targets` (earlier targets of a skill that was mastered and then raised).
 Both default to `{}`. A review task has `"review": true`. Whether a skill is mastered is
 always computed from the logs and its target, never stored (see docs/decisions/0007).
+Round 5 adds `rest_days` (planned rest days, ISO dates, sorted), default `[]`. A task
+picked on a date that already had practice logged has `"free_practice": true` (R10).
 
 ## R1 — Choose and save an art goal
 
@@ -141,6 +162,9 @@ Overall (across all goals), it shows:
 - Overall study milestones: 10, 50, 100 and 250 total hours (total study time, every log).
 - The **streak**: how many days in a row the user drew, ending today or yesterday. A day
   counts if it has a log with total minutes > 0, or a saved art piece (changed in R6).
+  A planned rest day (R10) on which the user did not draw is passed over: it neither
+  breaks the streak nor adds to it (changed in round 5). Counting starts today if today
+  is a drawing day, otherwise yesterday, as before.
 
 The roadmap uses plain ASCII so it renders in any terminal.
 
@@ -171,6 +195,11 @@ The roadmap uses plain ASCII so it renders in any terminal.
   exercise is chosen from that skill's exercise list based on the date, so it changes from
   day to day.
 - With no active goals, there is no task, and the user is told to add a goal.
+- **Rest day (R10).** On a planned rest day there is no task and nothing is saved, and
+  the user is told it is a rest day. This comes before everything above. The next day's
+  rotation continues from the last task given.
+- **Free practice (R10).** If the date already has a log with total minutes > 0 when the
+  task is first picked, the task is saved with `"free_practice": true`.
 
 ## R4 — Log the day and adjust
 
@@ -195,6 +224,8 @@ Adjustment:
   marked `completed`. Otherwise it goes down by 5 (min 10). Which skill they worked on
   doesn't matter for this. Later logs on the same date, and logs on dates without a task,
   do not change `task_minutes` or `completed`. Review tasks follow the same rule.
+  A free-practice task (R10) is never adjusted: it never changes `task_minutes` and is
+  never `completed`, whatever is logged later that day.
 - `completed` always follows the **first** log of the date. Editing or deleting logs (R9)
   rechecks it: completed if the first remaining log's on-goal minutes are at least the
   task's minutes, not completed if no log remains. `task_minutes` is never rewound, and a
@@ -264,8 +295,15 @@ A week runs Monday to Sunday. The summary of a week covers:
 - **Hours per skill:** the on-goal minutes for each goal/skill pair of every goal added
   on or before the week's Sunday, in roadmap order, in hours.
 - **Tasks completed vs skipped:** the counted days are the days of the week on or after
-  the day the first goal was added. A counted day is **completed** if its task was
-  completed (the R4 rule), and **skipped** otherwise, including days with no task at all.
+  the day the first goal was added. Each counted day is exactly one of (changed in
+  round 5, R10), checked in this order:
+  - **rest** if it is a planned rest day;
+  - **completed** if its task was completed (the R4 rule);
+  - **free practice** if it has a log with total minutes > 0 and either no task or a
+    free-practice task;
+  - **skipped** otherwise, including days with no task and no practice.
+  Completed + free practice + rest + skipped = the number of counted days. The summary
+  text shows all four. (Rounds 3–4 counted free practice and rest days as skipped.)
 - **Most neglected skill:** only goals added on or before the week's Monday take part, so
   a goal added mid-week is never flagged. Mastered pairs take no part either (changed in
   round 4, R8). Here mastered means mastered by the logs dated up to the week's Sunday,
@@ -359,9 +397,33 @@ Missing art check:
   the next start. A kept entry still counts as a drawing day for the streak, but is left
   out of comparisons (R5).
 
+## R10 — Free practice and planned rest days
+
+Free practice:
+
+- A counted day (R7) with practice logged (a log with total minutes > 0) but no task, or
+  whose task was picked only after that practice was logged, is **free practice**, not
+  skipped.
+- A free-practice task can't be completed, earns no task XP and never changes the task
+  length (R4). Study XP, skill progress and the streak count the logs as usual.
+- Editing or deleting logs (R9) re-derives the day: with no practice left it is skipped.
+  The `free_practice` mark on a task stays.
+
+Rest days (menu item "Plan a rest day"):
+
+- The menu lists the upcoming rest days (tomorrow on). The user enters a date
+  (YYYY-MM-DD) to mark it as a rest day, or picks an upcoming one to cancel it.
+- A date is accepted only if it is after today and its calendar week (Mon–Sun) has no
+  other rest day. Otherwise it is rejected with a message, and nothing is saved.
+- Only rest days after today can be cancelled. Today's and past rest days stay.
+- A rest day gets no task (R3), is counted as rest in the weekly summary (R7), and is
+  passed over by the streak (R2).
+- Rest days don't change the weekly focus: a focus day (Mon, Wed, Fri, Sun) that is a
+  rest day gets no task, and the focus skill gets one day less that week.
+
 ## Running
 
 `python -m drawplan` opens a menu: add goal, show roadmap, today's task, log today, save
 art, compare art, weekly summary, set a skill target, edit or delete a log or art piece,
-quit (`10`, or `q`). On start it checks for missing art (R9), then shows the weekly
+plan a rest day, quit (`11`, or `q`). On start it checks for missing art (R9), then shows the weekly
 summary (R7) and the monthly comparison (R5) when they are due.
