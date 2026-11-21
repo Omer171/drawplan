@@ -212,6 +212,43 @@ def test_r7_cli_shows_summary_at_start_once_and_saves_it(monkeypatch, capsys, ma
 def test_r7_cli_menu_item_shows_last_week_summary(monkeypatch, capsys, manga, data_file):
     manga["summaries"] = [LAST_MONDAY.isoformat()]                   # already shown
     storage.save(manga, data_file)
-    out = run_cli(monkeypatch, capsys, data_file, ["7", "8"], MONDAY)
+    out = run_cli(monkeypatch, capsys, data_file, ["7", "q"], MONDAY)
     assert "Weekly summary" in out
     assert "Week of 2026-11-09" in out
+
+
+# ---------- round 4: targets and mastered skills (R8) ----------
+
+def test_r7_neglect_compares_minutes_as_a_share_of_each_target(manga):
+    planner.set_target(manga, "manga", "inking", 100)
+    for skill in SKILLS:
+        planner.record_log(manga, day(0), 60, "manga", skill, 60, 0)
+    # equal minutes, but inking's share is 60/6000 against 60/1200 for the others
+    assert summary(manga)["neglected"] == ("manga", "inking")
+
+
+def test_r7_bigger_target_with_matching_time_is_not_neglected(manga):
+    planner.set_target(manga, "manga", "inking", 40)
+    for skill in SKILLS:
+        planner.record_log(manga, day(0), 120, "manga", skill, 120 if skill == "inking" else 60, 0)
+    assert summary(manga)["neglected"] is None
+
+
+def test_r7_mastered_skill_is_never_neglected(manga):
+    planner.set_target(manga, "manga", "paneling", 1)
+    planner.record_log(manga, LAST_MONDAY - dt.timedelta(days=3), 60, "manga", "paneling",
+                       60, 0)
+    for skill in SKILLS[1:]:
+        planner.record_log(manga, day(0), 60, "manga", skill, 60, 0)
+    s = summary(manga)
+    assert s["neglected"] is None
+    assert ("manga", "paneling") in s["skill_minutes"]
+    assert "(mastered)" in planner.render_week_summary(s)
+
+
+def test_r7_skill_mastered_after_the_week_can_still_be_that_weeks_neglected(manga):
+    for skill in SKILLS[:4]:
+        planner.record_log(manga, day(0), 60, "manga", skill, 60, 0)
+    planner.set_target(manga, "manga", "expressions", 1)
+    planner.record_log(manga, MONDAY, 60, "manga", "expressions", 60, 0)
+    assert summary(manga)["neglected"] == ("manga", "expressions")

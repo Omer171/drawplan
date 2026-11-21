@@ -117,3 +117,15 @@ def test_r4_invalid_log_rejected_and_nothing_saved(manga, total, goal, skill,
     assert manga["logs"] == []
     assert manga["task_minutes"] == 30
     assert not manga["tasks"][TODAY.isoformat()]["adjusted"]
+
+
+# ---------- round 4: completion follows the first log (R9 edits) ----------
+
+def test_r4_new_first_log_after_a_delete_sets_completion_without_rescaling(manga):
+    planner.daily_task(manga, TODAY)                                   # 30 minutes
+    planner.record_log(manga, TODAY, 10, "manga", "inking", 10, 0)
+    assert manga["task_minutes"] == 25
+    planner.delete_log(manga, 0)
+    planner.record_log(manga, TODAY, 40, "manga", "inking", 40, 0)
+    assert manga["tasks"]["2026-11-20"]["completed"] is True
+    assert manga["task_minutes"] == 25                                 # adjusted once only

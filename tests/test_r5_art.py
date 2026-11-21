@@ -181,3 +181,18 @@ def test_r5_manual_comparison_is_not_recorded(manga, image, art_dir):
     save_on(manga, TODAY, image, art_dir)
     gallery.write_comparison(manga, "manga", "inking", art_dir)
     assert manga["comparisons"] == []
+
+
+# ---------- round 4: pieces whose copy is missing (R9) ----------
+
+def test_r5_pieces_with_a_missing_copy_are_left_out_of_comparisons(manga, image, art_dir):
+    old = save_on(manga, TODAY - days(60), image, art_dir)
+    mid = save_on(manga, TODAY - days(40), image, art_dir)
+    new = save_on(manga, TODAY, image, art_dir)
+    (art_dir / old["file"]).unlink()
+    assert gallery.oldest_newest(manga, "manga", "inking", art_dir) == (mid, new)
+    assert gallery.eligible_pairs(manga, art_dir) == [("manga", "inking")]
+    (art_dir / new["file"]).unlink()
+    assert gallery.comparable_pairs(manga, art_dir) == []
+    assert not gallery.comparison_due(manga, TODAY, art_dir)
+    assert gallery.monthly_comparison(manga, TODAY, art_dir) is None
