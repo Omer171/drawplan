@@ -49,18 +49,13 @@ def test_r4_something_else_counts_total_but_not_goal(manga):
     assert planner.goal_minutes(manga, "manga") == 0
 
 
-def test_r4_next_task_targets_most_neglected_skill(manga):
+def test_r4_single_log_does_not_redirect_next_task(manga):
+    # Round 3: a log credits the skill worked on, but the next task follows the R3
+    # rotation. Neglect is now handled weekly by R7.
     skills = planner.CATALOG["manga"]
-    for skill in skills[:-1]:
-        planner.record_log(manga, TODAY, 30, "manga", skill, 30, 0)
-    assert planner.daily_task(manga, TOMORROW)["skill"] == skills[-1]
-
-
-def test_r4_neglect_is_compared_across_goals(manga):
-    planner.add_goal(manga, "figure", TODAY)
-    for skill in planner.CATALOG["manga"]:
-        planner.record_log(manga, TODAY, 10, "manga", skill, 10, 0)
-    assert planner.daily_task(manga, TOMORROW)["goal"] == "figure"
+    assert planner.daily_task(manga, TODAY)["skill"] == skills[0]
+    planner.record_log(manga, TODAY, 60, "manga", skills[1], 60, 0)
+    assert planner.daily_task(manga, TOMORROW)["skill"] == skills[1]
 
 
 def test_r4_full_task_makes_next_task_longer(manga):
