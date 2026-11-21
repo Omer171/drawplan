@@ -13,7 +13,13 @@ feel like a game:
 - **XP and levels:** earn 10 XP per hour on your goal, 20 XP per completed daily task
   and 100 XP per milestone. Every skill levels up on its own (anatomy lvl 4, paneling
   lvl 2), and so does your player level.
-- **Daily task:** one concrete exercise a day, for the skill you're furthest behind on.
+- **Daily task:** one concrete exercise a day, rotating through every skill of your
+  goals in turn, so none gets left out (a day you skip doesn't skip a skill).
+- **Weekly summary:** when a week (Monday to Sunday) ends, the next time you start the
+  app it shows your total hours, hours per skill and tasks completed vs skipped. If one
+  skill got less than half the average time, next week's task is that skill on Monday,
+  Wednesday, Friday and Sunday, until it catches up. Menu item 7 shows the summary any
+  time.
 - **Daily log:** tell it how long you studied, what you actually worked on, how much of
   that was on your goal, and how many drawings you finished. Progress goes to what you
   really did, and tomorrow's task gets 5 minutes longer if you did the full task, or
