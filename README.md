@@ -22,9 +22,9 @@ feel like a game:
   goals in turn, so none gets left out (a day you skip doesn't skip a skill).
 - **Weekly summary:** when a week (Monday to Sunday) ends, the next time you start the
   app it shows your total hours, hours per skill and how many days were completed, free
-  practice, rest or skipped. If one
-  skill got less than half the average time, next week's task is that skill on Monday,
-  Wednesday, Friday and Sunday, until it catches up. Time is compared against each
+  practice, rest or skipped. If one skill got less than half the average time, next
+  week's task is that skill on Monday, Wednesday, Friday and Sunday, until it catches
+  up. Time is compared against each
   skill's own target, and mastered skills are never flagged. Menu item 7 shows the
   summary any time.
 - **Daily log:** tell it how long you studied, what you actually worked on, how much of
