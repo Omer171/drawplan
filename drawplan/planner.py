@@ -1,4 +1,4 @@
-"""Planner logic: goals (R1), roadmap (R2), daily task (R3), logging and adjusting (R4).
+"""Planner logic: goals (R1), roadmap (R2), daily task (R3), logging (R4), XP (R6).
 
 Pure functions over a state dict. No input/print here; dates are passed in.
 """
@@ -91,12 +91,11 @@ def _adjust_task_length(state, entry):
     task = state["tasks"].get(entry["date"])
     if task is None or task["adjusted"]:
         return
-    if entry["goal_minutes"] >= task["minutes"]:
-        new = task["minutes"] + TASK_STEP
-    else:
-        new = task["minutes"] - TASK_STEP
+    done = entry["goal_minutes"] >= task["minutes"]
+    new = task["minutes"] + (TASK_STEP if done else -TASK_STEP)
     state["task_minutes"] = max(TASK_MIN, min(TASK_MAX, new))
     task["adjusted"] = True
+    task["completed"] = done  # R6: a completed task earns XP
 
 
 # ---------- R2: progress and roadmap (all derived from logs) ----------
@@ -126,13 +125,15 @@ def total_minutes(state):
     return sum(e["total_minutes"] for e in state["logs"])
 
 
-def level(state):
-    return 1 + total_minutes(state) // 600
+def drawing_days(state):
+    """R6: dates the user actually drew: a log with time > 0, or a saved art piece."""
+    days = {e["date"] for e in state["logs"] if e["total_minutes"] > 0}
+    return days | {a["date"] for a in state.get("art", [])}
 
 
 def streak(state, today):
-    """Consecutive days with a log, ending today (or yesterday if today has none yet)."""
-    days = {e["date"] for e in state["logs"]}
+    """Consecutive drawing days, ending today (or yesterday if today has none yet)."""
+    days = drawing_days(state)
     day = today if today.isoformat() in days else today - dt.timedelta(days=1)
     count = 0
     while day.isoformat() in days:
@@ -162,6 +163,72 @@ def overall_milestones(state):
             for h in TOTAL_HOUR_MARKS]
 
 
+# ---------- R6: XP and levels (all derived from logs and tasks) ----------
+
+XP_PER_HOUR = 10
+XP_PER_TASK = 20
+XP_PER_MILESTONE = 100
+XP_LEVEL_STEP = 50  # each level costs this much more XP than the one before
+
+
+def xp_for_level(n):
+    """Total XP needed to reach level n: 0, 50, 150, 300, 500, ..."""
+    return XP_LEVEL_STEP * n * (n - 1) // 2
+
+
+def level_for_xp(xp):
+    n = 1
+    while xp_for_level(n + 1) <= xp:
+        n += 1
+    return n
+
+
+def task_completed(state, date, task):
+    """Whether a day's task was completed (R4 rule: first log's on-goal minutes >= task).
+
+    Tasks adjusted before round 2 have no "completed" flag, so it is derived from logs.
+    """
+    if "completed" in task:
+        return task["completed"]
+    if not task.get("adjusted"):
+        return False
+    first = next((e for e in state["logs"] if e["date"] == date), None)
+    return first is not None and first["goal_minutes"] >= task["minutes"]
+
+
+def skill_xp(state, goal, skill):
+    minutes = sum(e["goal_minutes"] for e in state["logs"]
+                  if e["goal"] == goal and e["skill"] == skill)
+    tasks = sum(1 for date, t in state["tasks"].items()
+                if t["goal"] == goal and t["skill"] == skill
+                and task_completed(state, date, t))
+    return minutes * XP_PER_HOUR // 60 + tasks * XP_PER_TASK
+
+
+def skill_level(state, goal, skill):
+    return level_for_xp(skill_xp(state, goal, skill))
+
+
+def milestones_reached(state):
+    marks = [d for g in active_goals(state) for _, d in goal_milestones(state, g)]
+    marks += [d for _, d in overall_milestones(state)]
+    return sum(marks)
+
+
+def player_xp(state):
+    skills = sum(skill_xp(state, g, s) for g, s in work_options(state))
+    return skills + milestones_reached(state) * XP_PER_MILESTONE
+
+
+def level(state):
+    """Player level from player XP (R6 replaces the round 1 hours-based level)."""
+    return level_for_xp(player_xp(state))
+
+
+def next_level_xp(state):
+    return xp_for_level(level(state) + 1)
+
+
 def progress_bar(fraction, width=20):
     filled = int(round(min(max(fraction, 0.0), 1.0) * width))
     return "[" + "#" * filled + "-" * (width - filled) + "]"
@@ -176,17 +243,20 @@ def render_roadmap(state, today):
     if not goals:
         return "No goals yet. Add a goal to get your roadmap."
     days = streak(state, today)
-    lines = ["Level {}  |  {:.1f} total study hours  |  Streak: {} day{}".format(
-        level(state), total_minutes(state) / 60, days, "" if days == 1 else "s"), ""]
+    lines = ["Level {}  |  {} XP, next level at {} XP  |  {:.1f} total study hours  |  "
+             "Streak: {} day{}".format(
+                 level(state), player_xp(state), next_level_xp(state),
+                 total_minutes(state) / 60, days, "" if days == 1 else "s"), ""]
     width = max(len(s) for g in goals for s in CATALOG[g])
     for goal in goals:
         lines.append("== {} ==  {:.1f}h, {} drawings".format(
             goal.upper(), goal_minutes(state, goal) / 60, goal_drawings(state, goal)))
         for skill, minutes in skill_progress(state, goal).items():
             frac = minutes / SKILL_TARGET_MINUTES
-            lines.append("  {:<{w}} {} {:>3}%  {:.1f}/{}h".format(
+            lines.append("  {:<{w}} {} {:>3}%  {:>4.1f}/{}h  lvl {:<2} {:>4} XP".format(
                 skill, progress_bar(frac), int(min(frac, 1) * 100), minutes / 60,
-                SKILL_TARGET_MINUTES // 60, w=width))
+                SKILL_TARGET_MINUTES // 60, skill_level(state, goal, skill),
+                skill_xp(state, goal, skill), w=width))
         lines.append("  Milestones:")
         lines += ["    {} {}".format(_check(d), label)
                   for label, d in goal_milestones(state, goal)]
@@ -282,6 +352,6 @@ def daily_task(state, today):
     exercises = EXERCISES[skill]
     exercise = exercises[today.toordinal() % len(exercises)]
     task = {"goal": goal, "skill": skill, "minutes": minutes, "adjusted": False,
-            "text": "Spend {} minutes on {} ({}): {}.".format(minutes, skill, goal, exercise)}
+            "completed": False, "text": "Spend {} minutes on {} ({}): {}.".format(minutes, skill, goal, exercise)}
     state["tasks"][key] = task
     return task
