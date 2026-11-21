@@ -71,7 +71,28 @@ def record_log(state, today, total_minutes, goal, skill, goal_minutes, drawings)
     entry = {"date": today.isoformat(), "total_minutes": total_minutes, "goal": goal,
              "skill": skill, "goal_minutes": goal_minutes, "drawings": drawings}
     state["logs"].append(entry)
+    _adjust_task_length(state, entry)
     return entry
+
+
+TASK_STEP, TASK_MIN, TASK_MAX = 5, 10, 120
+
+
+def _adjust_task_length(state, entry):
+    """R4: lengthen the next task if today's was done in full, shorten it if not.
+
+    Only the first log on a date that has a task counts; which skill was worked on
+    does not matter (credit to the actual skill happens via the log itself).
+    """
+    task = state["tasks"].get(entry["date"])
+    if task is None or task["adjusted"]:
+        return
+    if entry["goal_minutes"] >= task["minutes"]:
+        new = task["minutes"] + TASK_STEP
+    else:
+        new = task["minutes"] - TASK_STEP
+    state["task_minutes"] = max(TASK_MIN, min(TASK_MAX, new))
+    task["adjusted"] = True
 
 
 # ---------- R2: progress and roadmap (all derived from logs) ----------
