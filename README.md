@@ -8,13 +8,20 @@ feel like a game:
   animation. Each one is broken into skills (manga: paneling, anatomy, penning, inking,
   expressions).
 - **Roadmap:** a progress bar for every skill (20 hours each), plus milestones to check
-  off (1/10/50/100 hours, 10/50/100 drawings, mastering each skill), a player level and
-  a daily streak.
+  off (1/10/50/100 hours, 10/50/100 drawings, mastering each skill), and a streak of
+  days in a row you drew.
+- **XP and levels:** earn 10 XP per hour on your goal, 20 XP per completed daily task
+  and 100 XP per milestone. Every skill levels up on its own (anatomy lvl 4, paneling
+  lvl 2), and so does your player level.
 - **Daily task:** one concrete exercise a day, for the skill you're furthest behind on.
 - **Daily log:** tell it how long you studied, what you actually worked on, how much of
   that was on your goal, and how many drawings you finished. Progress goes to what you
   really did, and tomorrow's task gets 5 minutes longer if you did the full task, or
   5 minutes shorter if you didn't.
+- **Art history:** save the image you made today for a skill. drawplan keeps a copy in
+  `drawplan_art/` next to the data file. Once a month, when you start the app, it opens
+  your oldest piece next to your newest for one skill in the browser, so you can see how
+  far you've come. You can also compare any time from the menu.
 
 Everything is saved in `drawplan_data.json` in the folder you run it from. Set the
 `DRAWPLAN_DATA` environment variable to use a different file.
