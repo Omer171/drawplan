@@ -21,7 +21,8 @@ feel like a game:
 - **Daily task:** one concrete exercise a day, rotating through every skill of your
   goals in turn, so none gets left out (a day you skip doesn't skip a skill).
 - **Weekly summary:** when a week (Monday to Sunday) ends, the next time you start the
-  app it shows your total hours, hours per skill and tasks completed vs skipped. If one
+  app it shows your total hours, hours per skill and how many days were completed, free
+  practice, rest or skipped. If one
   skill got less than half the average time, next week's task is that skill on Monday,
   Wednesday, Friday and Sunday, until it catches up. Time is compared against each
   skill's own target, and mastered skills are never flagged. Menu item 7 shows the
@@ -37,6 +38,11 @@ feel like a game:
 - **Fix mistakes:** menu item 9 edits or deletes a log or a saved art piece, so you
   never have to touch the JSON file. On start, drawplan checks that every saved image
   is still in `drawplan_art/` and asks whether to remove entries whose image is gone.
+- **Free practice and rest days:** if you log practice without asking for the day's
+  task first, that day counts as free practice, not skipped. Menu item 10 plans one
+  rest day a week ahead of time (from tomorrow on, and you can cancel it until the day
+  comes). A rest day has no task, isn't counted as skipped and doesn't break your
+  streak.
 
 Everything is saved in `drawplan_data.json` in the folder you run it from. Set the
 `DRAWPLAN_DATA` environment variable to use a different file.
