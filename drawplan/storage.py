@@ -14,8 +14,10 @@ class StorageError(Exception):
 
 
 def new_state():
+    # "art" and "comparisons" were added in round 2 (R5). They are only additions, so
+    # round 1 files still load (missing keys get these defaults) and the version stays 1.
     return {"version": 1, "goals": [], "logs": [], "tasks": {},
-            "task_minutes": START_TASK_MINUTES}
+            "task_minutes": START_TASK_MINUTES, "art": [], "comparisons": []}
 
 
 def data_path():

@@ -17,6 +17,10 @@ CATALOG = {
 SKILL_TARGET_MINUTES = 20 * 60
 
 
+def parse_date(text):
+    return dt.date.fromisoformat(text)
+
+
 # ---------- R1: goals ----------
 
 def active_goals(state):
