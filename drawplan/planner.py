@@ -1,4 +1,5 @@
-"""Planner logic: goals (R1), roadmap (R2), daily task (R3), logging (R4), XP (R6).
+"""Planner logic: goals (R1), roadmap (R2), daily task (R3), logging (R4), XP (R6),
+weekly summary (R7).
 
 Pure functions over a state dict. No input/print here; dates are passed in.
 """
@@ -329,15 +330,36 @@ EXERCISES = {
 }
 
 
-def _pick_skill(state):
-    """The (goal, skill) furthest behind its target; ties go to earlier goal, then skill."""
-    best = None
-    for goal in active_goals(state):
-        for skill, minutes in skill_progress(state, goal).items():
-            frac = minutes / SKILL_TARGET_MINUTES
-            if best is None or frac < best[0]:
-                best = (frac, goal, skill)
-    return best[1], best[2]
+FOCUS_WEEKDAYS = (0, 2, 4, 6)  # Mon, Wed, Fri, Sun: the focus skill's days (R7)
+
+
+def _next_in_rotation(state, today, skip=None):
+    """R3: the pair after the latest earlier task (ignoring `skip`), wrapping around."""
+    pairs = work_options(state)
+    candidates = [p for p in pairs if p != skip] or pairs
+    anchor = None
+    for date in sorted(state["tasks"], reverse=True):
+        task = state["tasks"][date]
+        pair = (task["goal"], task["skill"])
+        if date < today.isoformat() and pair in candidates:
+            anchor = pair
+            break
+    if anchor is None:
+        return candidates[0]
+    start = pairs.index(anchor)
+    for step in range(1, len(pairs) + 1):
+        pair = pairs[(start + step) % len(pairs)]
+        if pair in candidates:
+            return pair
+    return anchor
+
+
+def _pick_skill(state, today):
+    """Today's (goal, skill) and whether it is the week's focus skill (R3 + R7)."""
+    focus = focus_pair(state, today)
+    if focus is not None and today.weekday() in FOCUS_WEEKDAYS:
+        return focus, True
+    return _next_in_rotation(state, today, skip=focus), False
 
 
 def daily_task(state, today):
@@ -347,11 +369,68 @@ def daily_task(state, today):
         return state["tasks"][key]
     if not active_goals(state):
         return None
-    goal, skill = _pick_skill(state)
+    (goal, skill), is_focus = _pick_skill(state, today)
     minutes = state["task_minutes"]
     exercises = EXERCISES[skill]
     exercise = exercises[today.toordinal() % len(exercises)]
+    text = "Spend {} minutes on {} ({}): {}.".format(minutes, skill, goal, exercise)
+    if is_focus:
+        text += " This is this week's focus skill: it got the least time last week."
     task = {"goal": goal, "skill": skill, "minutes": minutes, "adjusted": False,
-            "completed": False, "text": "Spend {} minutes on {} ({}): {}.".format(minutes, skill, goal, exercise)}
+            "completed": False, "text": text}
     state["tasks"][key] = task
     return task
+
+
+# ---------- R7: weekly summary and the neglected skill ----------
+
+def week_start(day):
+    """The Monday of the calendar week (Mon-Sun) that contains `day`."""
+    return day - dt.timedelta(days=day.weekday())
+
+
+def last_finished_week(today):
+    return week_start(today) - dt.timedelta(days=7)
+
+
+def _goals_added_by(state, day):
+    return [g["name"] for g in state["goals"] if g["added"] <= day.isoformat()]
+
+
+def week_summary(state, monday):
+    """Everything R7 reports for the week starting `monday`. Derived, never stored."""
+    sunday = monday + dt.timedelta(days=6)
+    first, last = monday.isoformat(), sunday.isoformat()
+    logs = [e for e in state["logs"] if first <= e["date"] <= last]
+    pair_minutes = {(g, s): 0 for g in _goals_added_by(state, sunday) for s in CATALOG[g]}
+    for e in logs:
+        if (e["goal"], e["skill"]) in pair_minutes:
+            pair_minutes[(e["goal"], e["skill"])] += e["goal_minutes"]
+
+    starts = [g["added"] for g in state["goals"]]
+    counted = [monday + dt.timedelta(days=i) for i in range(7)]
+    counted = [d for d in counted if starts and d.isoformat() >= min(starts)]
+    completed = sum(1 for d in counted if d.isoformat() in state["tasks"]
+                    and task_completed(state, d.isoformat(), state["tasks"][d.isoformat()]))
+
+    whole_week = set(_goals_added_by(state, monday))
+    return {"start": first, "end": last,
+            "total_minutes": sum(e["total_minutes"] for e in logs),
+            "skill_minutes": pair_minutes,
+            "completed": completed, "skipped": len(counted) - completed,
+            "neglected": _neglected({p: m for p, m in pair_minutes.items()
+                                     if p[0] in whole_week})}
+
+
+def _neglected(pair_minutes):
+    """The pair with the fewest minutes, if under half the average (ties: roadmap order)."""
+    if not pair_minutes:
+        return None
+    average = sum(pair_minutes.values()) / len(pair_minutes)
+    pair = min(pair_minutes, key=pair_minutes.get)  # min keeps the first of equal values
+    return pair if pair_minutes[pair] < average / 2 else None
+
+
+def focus_pair(state, day):
+    """The pair this week's tasks focus on: last week's neglected skill, or None."""
+    return week_summary(state, week_start(day) - dt.timedelta(days=7))["neglected"]
