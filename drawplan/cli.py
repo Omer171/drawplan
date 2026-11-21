@@ -15,7 +15,12 @@ drawplan
   5) Save today's art
   6) Compare old and new art
   7) Weekly summary
-  8) Quit"""
+  8) Set a skill target
+  9) Edit or delete a log or art piece
+ 10) Quit"""
+
+QUIT = ("10", "q", "quit")
+NEEDS_GOALS = ("4", "5", "8")
 
 
 def ask_int(prompt, lo=0, hi=None):
@@ -25,6 +30,10 @@ def ask_int(prompt, lo=0, hi=None):
             return int(raw)
         print("Please enter a whole number{}.".format(
             "" if hi is None else " from {} to {}".format(lo, hi)))
+
+
+def ask_yes(prompt):
+    return input(prompt + " (y/n): ").strip().lower() in ("y", "yes")
 
 
 def add_goal(state, today):
@@ -41,8 +50,15 @@ def add_goal(state, today):
 
 def show_task(state, today):
     task = planner.daily_task(state, today)
-    print("No goals yet. Add a goal first." if task is None else "Today: " + task["text"])
-    return task is not None
+    if task is not None:
+        print("Today: " + task["text"])
+        return True
+    if planner.all_mastered(state):
+        print("Every skill is mastered and no review is due today. Raise a target "
+              "(menu 8) or add a goal to keep going.")
+    else:
+        print("No goals yet. Add a goal first.")
+    return False
 
 
 def _levels(state):
@@ -87,7 +103,7 @@ def show_comparison(state, goal, skill, folder):
 
 
 def compare_art(state, folder):
-    pairs = gallery.comparable_pairs(state)
+    pairs = gallery.comparable_pairs(state, folder)
     if not pairs:
         print("Save at least two pieces for a skill to compare them.")
         return False
@@ -98,7 +114,7 @@ def compare_art(state, folder):
 
 def monthly_comparison(state, today, folder):
     """R5: on start, once a month, show an old piece next to a recent one."""
-    pair = gallery.monthly_comparison(state, today)
+    pair = gallery.monthly_comparison(state, today, folder)
     if pair is None:
         return False
     print("Monthly look back: see how far you have come!")
@@ -124,9 +140,9 @@ def due_weekly_summary(state, today):
     return True
 
 
-def log_today(state, today):
-    before = _levels(state)
-    total = ask_int("Total minutes you studied today: ")
+def ask_log_answers(state, when="today"):
+    """The four R4 questions. Returns (total, goal, skill, on_goal, drawings)."""
+    total = ask_int("Total minutes you studied {}: ".format(when))
     options = planner.work_options(state)
     for i, (goal, skill) in enumerate(options, 1):
         print("  {}) {} / {}".format(i, goal, skill))
@@ -138,14 +154,134 @@ def log_today(state, today):
     else:
         goal, skill, on_goal = None, None, 0
     drawings = ask_int("Drawings finished: ")
+    return total, goal, skill, on_goal, drawings
+
+
+def log_today(state, today):
+    before = _levels(state)
+    answers = ask_log_answers(state)
     try:
-        planner.record_log(state, today, total, goal, skill, on_goal, drawings)
+        planner.record_log(state, today, *answers)
     except ValueError as exc:
         print(exc)
         return False
     print("Logged. Tomorrow's task will be {} minutes.".format(state["task_minutes"]))
     report_xp(before, _levels(state))
     return True
+
+
+def set_target(state, today):
+    """R8: change a skill's hour target."""
+    goal, skill = pick_pair(planner.work_options(state), "Which skill? ")
+    hours = planner.target_hours(state, goal, skill)
+    mastered = planner.is_mastered(state, goal, skill)
+    print("{} ({}): {:.1f}h done of a {}h target{}.".format(
+        skill, goal, planner.minutes_on(state, goal, skill) / 60, hours,
+        ", mastered" if mastered else ""))
+    new = ask_int("New target in hours ({}-{}): ".format(1, planner.MAX_TARGET_HOURS),
+                  1, planner.MAX_TARGET_HOURS)
+    try:
+        planner.set_target(state, goal, skill, new)
+    except ValueError as exc:
+        print(exc)
+        return False
+    print("{} ({}) now has a {}h target.{}".format(
+        skill, goal, new, " Mastered!" if planner.is_mastered(state, goal, skill) else ""))
+    return True
+
+
+# ---------- R9: edit or delete a log or an art piece ----------
+
+def describe_log(entry):
+    worked = ("something else" if entry["goal"] is None
+              else "{} / {}, {} min on goal".format(entry["goal"], entry["skill"],
+                                                    entry["goal_minutes"]))
+    return "{}  {} min total, {}, {} drawings".format(
+        entry["date"], entry["total_minutes"], worked, entry["drawings"])
+
+
+def describe_art(entry):
+    return "{}  {} / {}  {}".format(entry["date"], entry["goal"], entry["skill"],
+                                    entry["file"])
+
+
+def choose_entry(entries, kind, describe):
+    """List entries (recent, or one date) and return the chosen index, or None."""
+    raw = input("Date (YYYY-MM-DD), or Enter for the 20 most recent: ").strip()
+    try:
+        date = dt.date.fromisoformat(raw) if raw else None
+    except ValueError:
+        print("Not a date: {}".format(raw))
+        return None
+    found = planner.find_entries(entries, date)
+    if not found:
+        print("No {} found.".format(kind))
+        return None
+    for n, i in enumerate(found, 1):
+        print("  {}) {}".format(n, describe(entries[i])))
+    return found[ask_int("Which one? ", 1, len(found)) - 1]
+
+
+def edit_log(state, index):
+    print("Editing " + describe_log(state["logs"][index]))
+    try:
+        planner.edit_log(state, index, *ask_log_answers(state, "that day"))
+    except ValueError as exc:
+        print(exc)
+        return False
+    print("Saved: " + describe_log(state["logs"][index]))
+    return True
+
+
+def edit_art(state, index):
+    goal, skill = pick_pair(planner.work_options(state), "Which skill is it for? ")
+    try:
+        gallery.edit_art(state, index, goal, skill)
+    except ValueError as exc:
+        print(exc)
+        return False
+    print("Saved: " + describe_art(state["art"][index]))
+    return True
+
+
+def edit_or_delete(state, today, folder):
+    print("  1) a log\n  2) an art piece")
+    if ask_int("Edit or delete which? ", 1, 2) == 1:
+        kind, entries, describe = "logs", state["logs"], describe_log
+    else:
+        kind, entries, describe = "art pieces", state["art"], describe_art
+    index = choose_entry(entries, kind, describe)
+    if index is None:
+        return False
+    print("  1) Edit\n  2) Delete\n  3) Back")
+    action = ask_int("> ", 1, 3)
+    if action == 3:
+        return False
+    if action == 1:
+        return edit_log(state, index) if kind == "logs" else edit_art(state, index)
+    if not ask_yes("Delete " + describe(entries[index]) + "?"):
+        return False
+    if kind == "logs":
+        planner.delete_log(state, index)
+        print("Log deleted.")
+    else:
+        gallery.delete_art(state, index, folder)
+        print("Art piece and its copy in {} deleted.".format(folder))
+    return True
+
+
+def check_missing_art(state, folder):
+    """R9: on start, offer to remove entries whose image copy is missing."""
+    remove = []
+    for i in gallery.missing_art(state, folder):
+        entry = state["art"][i]
+        print("Saved art is missing: {} ({} / {}, {}).".format(
+            folder / entry["file"], entry["goal"], entry["skill"], entry["date"]))
+        if ask_yes("Remove this entry?"):
+            remove.append(i)
+    for i in sorted(remove, reverse=True):
+        gallery.forget_art(state, i)
+    return bool(remove)
 
 
 def main(today=None):
@@ -166,9 +302,11 @@ def _loop(state, path, today):
     folder = gallery.art_dir(path)
     actions = {"1": add_goal, "3": show_task, "4": log_today,
                "5": lambda st, d: save_art(st, d, folder),
-               "6": lambda st, d: compare_art(st, folder), "7": weekly_summary}
+               "6": lambda st, d: compare_art(st, folder), "7": weekly_summary,
+               "8": set_target, "9": lambda st, d: edit_or_delete(st, d, folder)}
     start = today or dt.date.today()
-    changed = due_weekly_summary(state, start)
+    changed = check_missing_art(state, folder)
+    changed = due_weekly_summary(state, start) or changed
     changed = monthly_comparison(state, start, folder) or changed
     if changed:
         storage.save(state, path)
@@ -176,14 +314,14 @@ def _loop(state, path, today):
         print(MENU)
         choice = input("> ").strip().lower()
         day = today or dt.date.today()
-        if choice in ("8", "q", "quit"):
+        if choice in QUIT:
             return
         if choice == "2":
             print(planner.render_roadmap(state, day))
-        elif choice in ("4", "5") and not planner.active_goals(state):
+        elif choice in NEEDS_GOALS and not planner.active_goals(state):
             print("No goals yet. Add a goal first.")
         elif choice in actions:
             if actions[choice](state, day):  # True means state changed
                 storage.save(state, path)
         else:
-            print("Choose 1-8.")
+            print("Choose 1-10.")
