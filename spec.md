@@ -43,6 +43,8 @@ Round 3 clarifications (agreed before this update):
   has none. Next week it gets the task on **4 of 7 days (Mon, Wed, Fri, Sun)**, and the
   other days rotate. Each week is checked again, so the focus continues until the skill
   catches up.
+- (Our own default, see docs/decisions/0005: only goals active the whole week can be
+  neglected.)
 - **Skipped** = every counted day of the week without a completed task, including days
   the app was not opened. Completed + skipped = the number of counted days.
 
