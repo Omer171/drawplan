@@ -17,9 +17,11 @@ def new_state():
     # "art" and "comparisons" were added in round 2 (R5). They are only additions, so
     # round 1 files still load (missing keys get these defaults) and the version stays 1.
     # "summaries" (R7, round 3) lists the Mondays of weeks whose summary was shown.
+    # "targets" and "mastered_targets" (R8, round 4) hold hour targets the user set and
+    # earlier targets of skills mastered before the target was raised.
     return {"version": 1, "goals": [], "logs": [], "tasks": {},
             "task_minutes": START_TASK_MINUTES, "art": [], "comparisons": [],
-            "summaries": []}
+            "summaries": [], "targets": {}, "mastered_targets": {}}
 
 
 def data_path():
