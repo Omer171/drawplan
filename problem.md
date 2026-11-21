@@ -10,14 +10,20 @@ your improvement.
 
 # Initial requirements
 
-- R1. The program asks the user for an art goal (potraits, figure, anatomy, manga, comic,
-  animation) and the program saves it.
-- R2. The program takes in this art goal and creates a visually clear guideline/roadmap for
-  the user. If the goal includes several skills (example the user wants to learn how to draw
-  manga. skills needed; panelling, anatomy, penning, inking, etc) create a progress bar for
-  each skill. Also it should have major roadmarkers for acheiving specfic tasks (ie. studying
-  for a total of 100 hours, drawing 100 figure, etc.). It should feel like a game.
-- R3. The program should everyday give the user a specific task to do for that day.
-- R4. The program should than upon recieving what the user actually did for the day, adjust
-  for the user actually did. Ask the user for how long they studied, what they ended up
-  actually working on and how long they spent on the goal.
+* R1. The program asks the user for an art goal (potraits, figure, anatomy, manga, comic,
+animation) and the program saves it.
+* R2. The program takes in this art goal and creates a visually clear guideline/roadmap for
+the user. If the goal includes several skills (example the user wants to learn how to draw
+manga. skills needed; panelling, anatomy, penning, inking, etc) create a progress bar for
+each skill. Also it should have major roadmarkers for acheiving specfic tasks (ie. studying
+for a total of 100 hours, drawing 100 figure, etc.). It should feel like a game.
+* R3. The program should everyday give the user a specific task to do for that day.
+* R4. The program should than upon recieving what the user actually did for the day, adjust
+for the user actually did. Ask the user for how long they studied, what they ended up
+actually working on and how long they spent on the goal.
+
+# Round 2 Requirements
+
+* R5. The program should let the user save the art they made for the day by giving it the file path to the image, and it saves it with the date and which skill it was for. Every month the program should open a old piece next to a recent one for the same skill so the user can actually see there improvement, since thats the whole point of tracking it.
+* R6. To make it actually feel like a game the user should earn xp for every hour studied and every task completed, level up each skill separately (ex. anatomy lvl 4, panelling lvl 2), and have a streak for how many days in a row they drew. Hitting one of the major roadmarkers from R2 should give a big xp bonus.
+
