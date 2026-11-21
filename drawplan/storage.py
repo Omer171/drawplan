@@ -19,9 +19,11 @@ def new_state():
     # "summaries" (R7, round 3) lists the Mondays of weeks whose summary was shown.
     # "targets" and "mastered_targets" (R8, round 4) hold hour targets the user set and
     # earlier targets of skills mastered before the target was raised.
+    # "rest_days" (R10, round 5) lists planned rest days as sorted ISO dates.
     return {"version": 1, "goals": [], "logs": [], "tasks": {},
             "task_minutes": START_TASK_MINUTES, "art": [], "comparisons": [],
-            "summaries": [], "targets": {}, "mastered_targets": {}}
+            "summaries": [], "targets": {}, "mastered_targets": {},
+            "rest_days": []}
 
 
 def data_path():

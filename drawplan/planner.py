@@ -1,5 +1,6 @@
 """Planner logic: goals (R1), roadmap (R2), daily task (R3), logging (R4), XP (R6),
-weekly summary (R7), mastery and targets (R8), editing logs (R9).
+weekly summary (R7), mastery and targets (R8), editing logs (R9), free practice and
+rest days (R10).
 
 Pure functions over a state dict. No input/print here; dates are passed in.
 """
@@ -127,7 +128,7 @@ def _recheck_completion(state, date):
     task_minutes is never rewound: later tasks were already picked with it.
     """
     task = state["tasks"].get(date)
-    if task is None or not task["adjusted"]:
+    if task is None or not task["adjusted"] or task.get("free_practice"):
         return
     first = next((e for e in state["logs"] if e["date"] == date), None)
     task["completed"] = first is not None and first["goal_minutes"] >= task["minutes"]
@@ -142,7 +143,7 @@ def _adjust_task_length(state, entry):
     first log decides whether it was completed.
     """
     task = state["tasks"].get(entry["date"])
-    if task is None:
+    if task is None or task.get("free_practice"):  # R10: picked after practice was logged
         return
     if task["adjusted"]:
         _recheck_completion(state, entry["date"])
@@ -189,12 +190,17 @@ def drawing_days(state):
 
 
 def streak(state, today):
-    """Consecutive drawing days, ending today (or yesterday if today has none yet)."""
+    """Consecutive drawing days, ending today (or yesterday if today has none yet).
+
+    R10: a planned rest day without drawing is passed over: it neither breaks the
+    streak nor adds to it.
+    """
     days = drawing_days(state)
+    rest = set(state.get("rest_days", []))
     day = today if today.isoformat() in days else today - dt.timedelta(days=1)
     count = 0
-    while day.isoformat() in days:
-        count += 1
+    while day.isoformat() in days or day.isoformat() in rest:
+        count += day.isoformat() in days
         day -= dt.timedelta(days=1)
     return count
 
@@ -443,13 +449,13 @@ def review_minutes(task_minutes):
 def daily_task(state, today):
     """Return today's task, picking and saving it the first time it is asked for.
 
-    None when there are no goals, or when every skill is mastered and no review is
-    due (nothing is saved then, so a later target change or new goal gives a task).
+    None when there are no goals, on a planned rest day (R10), or when every skill is
+    mastered and no review is due (nothing is saved then, so a later target change or new goal gives a task).
     """
     key = today.isoformat()
     if key in state["tasks"]:
         return state["tasks"][key]
-    if not active_goals(state):
+    if not active_goals(state) or is_rest_day(state, today):
         return None
     pair, kind = _pick_skill(state, today)
     if pair is None:
@@ -471,6 +477,8 @@ def daily_task(state, today):
             "completed": False, "text": text}
     if kind == "review":
         task["review"] = True
+    if has_practice(state, key):  # R10: practice was logged before the task was asked for
+        task["free_practice"] = True
     state["tasks"][key] = task
     return task
 
@@ -503,8 +511,7 @@ def week_summary(state, monday):
     starts = [g["added"] for g in state["goals"]]
     counted = [monday + dt.timedelta(days=i) for i in range(7)]
     counted = [d for d in counted if starts and d.isoformat() >= min(starts)]
-    completed = sum(1 for d in counted if d.isoformat() in state["tasks"]
-                    and task_completed(state, d.isoformat(), state["tasks"][d.isoformat()]))
+    status = [day_status(state, d) for d in counted]
 
     whole_week = set(_goals_added_by(state, monday))
     mastered = [p for p in pair_minutes if is_mastered(state, *p, until=sunday)]
@@ -513,7 +520,9 @@ def week_summary(state, monday):
     return {"start": first, "end": last,
             "total_minutes": sum(e["total_minutes"] for e in logs),
             "skill_minutes": pair_minutes, "mastered": mastered,
-            "completed": completed, "skipped": len(counted) - completed,
+            "completed": status.count("completed"),
+            "free_practice": status.count("free practice"),
+            "rest": status.count("rest"), "skipped": status.count("skipped"),
             "neglected": _neglected(shares)}
 
 
@@ -558,8 +567,9 @@ def render_week_summary(summary):
                                                "  (mastered)" if p in mastered else "",
                                                w=width)
               for p, m in pairs.items()]
-    lines.append("  Tasks: {} completed, {} skipped".format(
-        summary["completed"], summary["skipped"]))
+    lines.append("  Tasks: {} completed, {} free practice, {} rest day{}, {} skipped".format(
+        summary["completed"], summary["free_practice"], summary["rest"],
+        "" if summary["rest"] == 1 else "s", summary["skipped"]))
     if summary["neglected"]:
         goal, skill = summary["neglected"]
         lines.append("  Most neglected: {} / {} ({:.1f}h). Next week's tasks focus on it "
@@ -656,3 +666,53 @@ def due_reviews(state, today):
     due = [(review_due_date(state, *p, today), i, p)
            for i, p in enumerate(work_options(state)) if is_mastered(state, *p)]
     return [p for d, _, p in sorted(due) if d <= today]
+
+
+# ---------- R10: free practice and planned rest days ----------
+
+def has_practice(state, date):
+    """Whether any log on `date` (ISO string) has more than 0 total minutes."""
+    return any(e["date"] == date and e["total_minutes"] > 0 for e in state["logs"])
+
+
+def is_rest_day(state, day):
+    return day.isoformat() in state.get("rest_days", [])
+
+
+def day_status(state, day):
+    """How a day counts (R7/R10): "rest", "completed", "free practice" or "skipped"."""
+    key = day.isoformat()
+    if is_rest_day(state, day):
+        return "rest"
+    task = state["tasks"].get(key)
+    if task is not None and task_completed(state, key, task):
+        return "completed"
+    if has_practice(state, key) and (task is None or task.get("free_practice")):
+        return "free practice"
+    return "skipped"
+
+
+def upcoming_rest_days(state, today):
+    return [parse_date(d) for d in sorted(state.get("rest_days", []))
+            if d > today.isoformat()]
+
+
+def mark_rest_day(state, day, today):
+    """Plan a rest day: from tomorrow on, at most one per calendar week (Mon-Sun)."""
+    if day <= today:
+        raise ValueError("A rest day must be planned ahead: pick a date after today.")
+    week = week_start(day)
+    taken = [d for d in state["rest_days"] if week_start(parse_date(d)) == week]
+    if taken:
+        raise ValueError("The week of {} already has a rest day on {}.".format(
+            week.isoformat(), taken[0]))
+    state["rest_days"] = sorted(state["rest_days"] + [day.isoformat()])
+
+
+def cancel_rest_day(state, day, today):
+    """Cancel a planned rest day that hasn't arrived yet."""
+    if day.isoformat() not in state["rest_days"]:
+        raise ValueError("{} is not a planned rest day.".format(day.isoformat()))
+    if day <= today:
+        raise ValueError("Only rest days after today can be cancelled.")
+    state["rest_days"].remove(day.isoformat())
