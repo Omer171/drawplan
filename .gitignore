@@ -3,3 +3,4 @@ __pycache__/
 *.jsonl
 drawplan_data.json
 .pytest_cache/
+drawplan_art/
