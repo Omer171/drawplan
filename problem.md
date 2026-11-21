@@ -30,7 +30,12 @@ actually working on and how long they spent on the goal.
 # Round 3 Requirements
 
 * R7. At the end of every week the program should give the user a summary of what they did, total hours, hours per skill, and tasks completed vs skipped. It should also find which skill the user has been neglecting the most and make the daily tasks from R3 focus more on that skill the next week.
-* R3 (changed in round 3). The program should everyday give the user a specific task to do for that day. The task should normally rotate between all the skills in the users goal, but if the weekly summary from R7 found a skill the user has been neglecting, than the tasks for the next week should focus more on that skill (ex. 3 or 4 days out of the 7) until it catches up with the others.            	     Whats changed:  originally R3 would only give you one task, but now it rotates the task based on all the skills you are learning, and neglected tasks get more days in the week to focus on them.
+* R3 (changed in round 3). The program should everyday give the user a specific task to do for that day. The task should normally rotate between all the skills in the users goal, but if the weekly summary from R7 found a skill the user has been neglecting, than the tasks for the next week should focus more on that skill (ex. 3 or 4 days out of the 7) until it catches up with the others.            	     Whats changed:  originally R3 would only give you one task, but now it rotates the task based on all the skills you are learning, and neglected tasks get more days in the week to focus on them. 
+
+# Round 4 Requirements 
+
+* R8. When a skill reaches 100% of its target it should count as mastered. A mastered skill gets taken out of the normal task rotation and cant be flagged as neglected anymore, but every couple weeks the program should still give a small review task for it so the user doesnt lose it. The user should also be able to set a different hour target for each skill (ex. anatomy 50 hours, inking 15 hours) instead of every skill being 20 hours, and the user can raise a target after mastering it if they want to keep going.
+* R9. The user should be able to edit or delete a log or a saved art piece from inside the program, instead of having to go into the json file. When the program starts it should check that every saved art image still exists, and if one is missing it tells the user and asks if they want to remove that entry.
 
 
 
