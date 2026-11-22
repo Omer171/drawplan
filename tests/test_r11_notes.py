@@ -37,9 +37,9 @@ def test_r11_notes_are_saved_on_the_log_with_its_skill(manga):
 def test_r11_notes_are_optional_and_trimmed(manga):
     entry = log(manga, TODAY, well="  good flow  ", fix="   ")
     assert entry["went_well"] == "good flow"
-    assert entry["fix"] == ""
+    assert "fix" not in entry                        # blank notes are not stored
     plain = planner.record_log(manga, TODAY, 30, "manga", "inking", 30, 0)
-    assert plain["went_well"] == "" and plain["fix"] == ""
+    assert "went_well" not in plain and "fix" not in plain
 
 
 def test_r11_something_else_log_cannot_have_notes(manga):

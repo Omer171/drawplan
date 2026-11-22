@@ -149,7 +149,7 @@ always computed from the logs and its target, never stored (see docs/decisions/0
 Round 5 adds `rest_days` (planned rest days, ISO dates, sorted), default `[]`. A task
 picked on a date that already had practice logged has `"free_practice": true` (R10).
 Round 6 (R11) adds two text fields to a log with a goal/skill, `"went_well"` and `"fix"`
-(`""` when left blank; a log without them reads as blank). Once a fix note has been
+(only stored when not blank; a log without them reads as blank). Once a fix note has been
 checked, its log also gets `"came_back"` (the dates the user said it was not fixed) and,
 when fixed, `"fixed"` (the date they said it was). `notes_reminder` is the `YYYY-MM` of
 the last monthly look-back reminder, default `null`. The file version stays 1.
