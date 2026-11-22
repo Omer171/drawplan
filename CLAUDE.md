@@ -10,3 +10,8 @@
 - Keep the logic (`drawplan/planner.py`, `drawplan/storage.py`) free of `input()`/`print()`.
   Only `drawplan/cli.py` talks to the user. Pass `today` explicitly so tests control dates.
 - Commit in small steps. Never amend or undo commits.
+- The product owner writes, commits and pushes each round's requirements in `problem.md`
+  before the session starts. Never write, edit or commit requirements yourself; if
+  `problem.md` has uncommitted changes, ask first.
+- Never commit a handoff file or changes to `CLAUDE.md`. The product owner reads and
+  edits them first, then commits.
