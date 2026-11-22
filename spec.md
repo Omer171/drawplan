@@ -1,4 +1,4 @@
-# drawplan — specification (rounds 1–5)
+# drawplan — specification (rounds 1–6)
 
 drawplan is a command-line app for people learning to draw. They pick art goals and get a
 roadmap with a progress bar for each skill and milestones to reach. Each day it gives them
@@ -7,7 +7,10 @@ adjusts the plan. Each week it sums up what they did and focuses the next week o
 skill they neglected. A skill that reaches its hour target is mastered: it leaves the
 rotation and gets a short review task every two weeks. Logs and art can be edited or
 deleted from the menu. Practising without asking for the task counts as free practice,
-and one rest day a week can be planned ahead without breaking the streak.
+and one rest day a week can be planned ahead without breaking the streak. After each
+log the user notes one thing that went well and one thing to fix; the next task for that
+skill shows the open fix note, and a look-back shows which problems were fixed and which
+keep coming back.
 
 Clarifications agreed with the product owner before this spec was written:
 
@@ -91,6 +94,20 @@ Round 5 clarifications (agreed before this update):
   task as `"free_practice": true` when a task is picked after practice was logged; a rest
   day on a focus day costs the focus skill that day.)
 
+Round 6 clarifications (agreed before this update):
+
+- R11 the two notes (went well, want to fix) are asked after **every log that picked a
+  goal/skill**, not after "something else". **Enter leaves a note blank**; both are
+  optional. Editing a log (R9) does not ask them again.
+- R11 "fixed or keeps coming back" is **asked at the next log of that skill**: "Last time
+  you wanted to fix: X. Did you fix it?" Yes marks it fixed. No keeps it open and counts
+  one "came back". The look-back lists fixed problems and open ones with their count.
+- R11 the look-back is a **menu item that works any time**, plus a **reminder at startup
+  once per calendar month** (like the R5 monthly comparison).
+- (Our own defaults, see docs/decisions/0011 and 0012: notes are stored on the log they
+  were written with; every open fix note from an earlier date is checked at the next log
+  of its skill, and the task shows the newest open one.)
+
 ## Data
 
 Everything is saved in one JSON file, `drawplan_data.json`, in the current directory. The
@@ -114,7 +131,8 @@ half-written file.
   "summaries": ["2026-11-09"],
   "targets": {"manga": {"inking": 15}},
   "mastered_targets": {"manga": {"inking": [10]}},
-  "rest_days": ["2026-11-24"]
+  "rest_days": ["2026-11-24"],
+  "notes_reminder": "2026-11"
 }
 ```
 
@@ -130,6 +148,11 @@ Both default to `{}`. A review task has `"review": true`. Whether a skill is mas
 always computed from the logs and its target, never stored (see docs/decisions/0007).
 Round 5 adds `rest_days` (planned rest days, ISO dates, sorted), default `[]`. A task
 picked on a date that already had practice logged has `"free_practice": true` (R10).
+Round 6 (R11) adds two text fields to a log with a goal/skill, `"went_well"` and `"fix"`
+(`""` when left blank; a log without them reads as blank). Once a fix note has been
+checked, its log also gets `"came_back"` (the dates the user said it was not fixed) and,
+when fixed, `"fixed"` (the date they said it was). `notes_reminder` is the `YYYY-MM` of
+the last monthly look-back reminder, default `null`. The file version stays 1.
 
 ## R1 — Choose and save an art goal
 
@@ -200,6 +223,10 @@ The roadmap uses plain ASCII so it renders in any terminal.
   rotation continues from the last task given.
 - **Free practice (R10).** If the date already has a log with total minutes > 0 when the
   task is first picked, the task is saved with `"free_practice": true`.
+- **Fix reminder (R11).** Whenever a task is shown (rotation, focus or review), it is
+  followed by the newest open fix note for its goal/skill: `Last time you wanted to fix:
+  <note>`. Nothing is added when that skill has no open fix note. The reminder is not
+  saved in the task.
 
 ## R4 — Log the day and adjust
 
@@ -211,6 +238,10 @@ The log asks for:
 4. drawings finished (whole number, 0 or more).
 
 Invalid values are rejected with a message, and nothing is saved.
+
+When a goal/skill was picked, the log then asks the R11 questions (see R11): first
+whether each open fix note of that skill was fixed, then the two new notes. The log, the
+notes and the answers are saved together.
 
 Adjustment:
 
@@ -373,7 +404,11 @@ Choosing an entry (menu item "Edit or delete a log or art piece"):
 Logs:
 
 - **Edit** asks the four R4 questions again, with the same checks. The date stays the
-  same. An invalid answer is rejected with a message, and the log is unchanged.
+  same. An invalid answer is rejected with a message, and the log is unchanged. The log's
+  R11 notes and their fixed/came-back answers are kept and are not asked again; they
+  follow the log's new goal/skill, and are ignored while it is "something else".
+- **Delete** also removes the log's R11 notes. Answers the deleted log gave about older
+  fix notes stay on those notes.
 - **Delete** asks for a yes/no confirmation first.
 - Afterwards the day's task completion is rechecked (R4). Everything else that is
   derived (skill progress, mastery, milestones, XP, levels, streak, weekly summaries and
@@ -421,9 +456,37 @@ Rest days (menu item "Plan a rest day"):
 - Rest days don't change the weekly focus: a focus day (Mon, Wed, Fri, Sun) that is a
   rest day gets no task, and the focus skill gets one day less that week.
 
+## R11 — Went well / want to fix notes
+
+Writing notes (after a log, R4):
+
+- Only a log with a goal/skill gets notes. A "something else" log asks nothing, and
+  giving it notes is rejected.
+- **Check open fixes first.** A fix note is **open** while it is not blank and not
+  marked fixed. The log asks about every open fix note of the same goal/skill written on
+  an **earlier date**, oldest first, and not already answered on this date: `Last time
+  you wanted to fix: <note>. Did you fix it? (y/n)`. Yes records the log's date as
+  `fixed`. No appends the date to `came_back`, and the note stays open.
+- Then it asks `One thing that went well` and `One thing you want to fix`. Surrounding
+  spaces are trimmed; Enter leaves the note blank.
+
+Monthly look-back:
+
+- Menu item "Look back at notes" lists the active goal/skill pairs that have at least one
+  note (in roadmap order) and shows the chosen pair's notes, oldest first: each log's
+  date, what went well, what to fix and that fix's status (`fixed <date>`, `came back N
+  time(s)` or `not checked yet`). Below the list it sums up the fix notes in three groups:
+  **Fixed**, **Keeps coming back** (open, came back at least once, most times first) and
+  **Not checked yet** (open, never answered). With no notes at all it says so.
+- When the app starts, after the monthly comparison (R5), it reminds the user once per
+  calendar month to look back at their notes, if any note is dated before the current
+  month and `notes_reminder` is not the current month. Showing the reminder records the
+  month in `notes_reminder`. The look-back itself is never recorded.
+
 ## Running
 
 `python -m drawplan` opens a menu: add goal, show roadmap, today's task, log today, save
 art, compare art, weekly summary, set a skill target, edit or delete a log or art piece,
-plan a rest day, quit (`11`, or `q`). On start it checks for missing art (R9), then shows the weekly
-summary (R7) and the monthly comparison (R5) when they are due.
+plan a rest day, look back at notes, quit (`12`, or `q`). On start it checks for missing
+art (R9), then shows the weekly summary (R7), the monthly comparison (R5) and the monthly
+notes reminder (R11) when they are due.
