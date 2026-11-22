@@ -18,9 +18,10 @@ drawplan
   8) Set a skill target
   9) Edit or delete a log or art piece
  10) Plan a rest day
- 11) Quit"""
+ 11) Look back at notes
+ 12) Quit"""
 
-QUIT = ("11", "q", "quit")
+QUIT = ("12", "q", "quit")
 NEEDS_GOALS = ("4", "5", "8")
 
 
@@ -57,6 +58,9 @@ def show_task(state, today):
     task = planner.daily_task(state, today)
     if task is not None:
         print("Today: " + task["text"])
+        fix = planner.open_fix(state, task["goal"], task["skill"])
+        if fix:  # R11: remind the user what they wanted to fix on this skill
+            print("Last time you wanted to fix: {}".format(fix))
         return True
     if planner.all_mastered(state):
         print("Every skill is mastered and no review is due today. Raise a target "
@@ -162,11 +166,24 @@ def ask_log_answers(state, when="today"):
     return total, goal, skill, on_goal, drawings
 
 
+def ask_notes(state, today, goal, skill):
+    """R11: ask about open fix notes, then for today's two notes (Enter skips)."""
+    fixed = {}
+    for i in planner.fixes_to_check(state, goal, skill, today):
+        entry = state["logs"][i]
+        print("Last time you wanted to fix: {}. ({})".format(entry["fix"], entry["date"]))
+        fixed[i] = ask_yes("Did you fix it?")
+    went_well = input("One thing that went well (Enter to skip): ")
+    fix = input("One thing you want to fix (Enter to skip): ")
+    return {"went_well": went_well, "fix": fix, "fixed": fixed}
+
+
 def log_today(state, today):
     before = _levels(state)
     answers = ask_log_answers(state)
+    notes = ask_notes(state, today, answers[1], answers[2]) if answers[1] else {}
     try:
-        planner.record_log(state, today, *answers)
+        planner.record_log(state, today, *answers, **notes)
     except ValueError as exc:
         print(exc)
         return False
@@ -309,6 +326,28 @@ def plan_rest_day(state, today):
     return True
 
 
+# ---------- R11: look back at notes ----------
+
+def look_back(state, today):
+    """Show one skill's notes: what was fixed and what keeps coming back."""
+    pairs = planner.note_pairs(state)
+    if not pairs:
+        print("No notes yet. They are asked for after each log (menu 4).")
+        return False
+    goal, skill = pick_pair(pairs, "Look back at which skill? ")
+    print(planner.render_notes(state, goal, skill))
+    return False  # looking back is not recorded (R11)
+
+
+def notes_reminder(state, today):
+    """R11: on start, once a month, remind the user to look back at their notes."""
+    if not planner.due_notes_reminder(state, today):
+        return False
+    print("New month: look back at your notes to see which problems you fixed and "
+          "which keep coming back (menu 11).")
+    return True
+
+
 def check_missing_art(state, folder):
     """R9: on start, offer to remove entries whose image copy is missing."""
     remove = []
@@ -343,11 +382,12 @@ def _loop(state, path, today):
                "5": lambda st, d: save_art(st, d, folder),
                "6": lambda st, d: compare_art(st, folder), "7": weekly_summary,
                "8": set_target, "9": lambda st, d: edit_or_delete(st, d, folder),
-               "10": plan_rest_day}
+               "10": plan_rest_day, "11": look_back}
     start = today or dt.date.today()
     changed = check_missing_art(state, folder)
     changed = due_weekly_summary(state, start) or changed
     changed = monthly_comparison(state, start, folder) or changed
+    changed = notes_reminder(state, start) or changed
     if changed:
         storage.save(state, path)
     while True:
@@ -364,4 +404,4 @@ def _loop(state, path, today):
             if actions[choice](state, day):  # True means state changed
                 storage.save(state, path)
         else:
-            print("Choose 1-11.")
+            print("Choose 1-12.")

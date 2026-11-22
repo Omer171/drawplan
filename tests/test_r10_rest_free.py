@@ -312,6 +312,7 @@ def test_r10_cli_task_on_a_rest_day_says_rest(monkeypatch, capsys, manga, data_f
     assert storage.load(data_file)["tasks"] == {}
 
 
-def test_r10_cli_quit_is_now_11(monkeypatch, capsys, data_file):
-    out = run_cli(monkeypatch, capsys, data_file, ["11"], TODAY)
-    assert "11) Quit" in out
+def test_r10_cli_rest_day_is_menu_10(monkeypatch, capsys, data_file):
+    # R11 menu: quit moved from 11 to 12 in round 6 (see test_r11_cli_quit_is_now_12).
+    out = run_cli(monkeypatch, capsys, data_file, ["q"], TODAY)
+    assert "10) Plan a rest day" in out
