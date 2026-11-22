@@ -43,6 +43,12 @@ feel like a game:
   rest day a week ahead of time (from tomorrow on, and you can cancel it until the day
   comes). A rest day has no task, isn't counted as skipped and doesn't break your
   streak.
+- **Went well / want to fix:** after each log for a skill, write one thing that went
+  well and one thing you want to fix (Enter skips either). The next task for that skill
+  reminds you what you wanted to fix, and the next time you log that skill drawplan
+  asks whether you fixed it. Menu item 11 looks back at a skill's notes: what you fixed,
+  what keeps coming back and what you haven't checked yet. Once a month, when you start
+  the app, it reminds you to look back.
 
 Everything is saved in `drawplan_data.json` in the folder you run it from. Set the
 `DRAWPLAN_DATA` environment variable to use a different file.
