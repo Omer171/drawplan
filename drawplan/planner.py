@@ -73,11 +73,27 @@ def _validate_log(state, total_minutes, goal, skill, goal_minutes, drawings):
         raise ValueError("{} / {} is not part of your goals".format(goal, skill))
 
 
-def record_log(state, today, total_minutes, goal, skill, goal_minutes, drawings):
-    """Record what the user actually did. goal/skill None means 'something else'."""
+def record_log(state, today, total_minutes, goal, skill, goal_minutes, drawings,
+               went_well="", fix="", fixed=None):
+    """Record what the user actually did. goal/skill None means 'something else'.
+
+    R11: went_well/fix are the day's notes; fixed maps the log index of each open fix
+    note the user was asked about (fixes_to_check) to their yes/no answer.
+    """
     _validate_log(state, total_minutes, goal, skill, goal_minutes, drawings)
+    went_well, fix, fixed = went_well.strip(), fix.strip(), dict(fixed or {})
+    if goal is None and (went_well or fix or fixed):
+        raise ValueError("Notes need a skill: pick what you worked on.")
+    due = fixes_to_check(state, goal, skill, today) if goal is not None else []
+    if any(i not in due for i in fixed):
+        raise ValueError("That fix note is not waiting for an answer.")
     entry = {"date": today.isoformat(), "total_minutes": total_minutes, "goal": goal,
              "skill": skill, "goal_minutes": goal_minutes, "drawings": drawings}
+    for key, note in (("went_well", went_well), ("fix", fix)):
+        if note:  # blank notes are not stored, so a log without notes is unchanged
+            entry[key] = note
+    for i, was_fixed in fixed.items():
+        _answer_fix(state["logs"][i], was_fixed, today)
     state["logs"].append(entry)
     _adjust_task_length(state, entry)
     return entry
@@ -96,6 +112,7 @@ def edit_log(state, index, total_minutes, goal, skill, goal_minutes, drawings):
     _validate_log(state, total_minutes, goal, skill, goal_minutes, drawings)
     entry = {"date": old["date"], "total_minutes": total_minutes, "goal": goal,
              "skill": skill, "goal_minutes": goal_minutes, "drawings": drawings}
+    entry.update({k: old[k] for k in NOTE_KEYS if k in old})  # R11 notes stay
     state["logs"][index] = entry
     _recheck_completion(state, entry["date"])
     return entry
@@ -716,3 +733,102 @@ def cancel_rest_day(state, day, today):
     if day <= today:
         raise ValueError("Only rest days after today can be cancelled.")
     state["rest_days"].remove(day.isoformat())
+
+
+# ---------- R11: went-well / want-to-fix notes ----------
+
+NOTE_KEYS = ("went_well", "fix", "came_back", "fixed")
+
+
+def _pair_logs(state, goal, skill):
+    """(index, log) for every log of this goal/skill, in date order (stable)."""
+    found = [(i, e) for i, e in enumerate(state["logs"])
+             if e["goal"] is not None and (e["goal"], e["skill"]) == (goal, skill)]
+    return sorted(found, key=lambda pair: pair[1]["date"])
+
+
+def has_notes(entry):
+    return entry["goal"] is not None and bool(entry.get("went_well") or entry.get("fix"))
+
+
+def is_open_fix(entry):
+    return entry["goal"] is not None and bool(entry.get("fix")) and "fixed" not in entry
+
+
+def fixes_to_check(state, goal, skill, today):
+    """Log indices of open fix notes to ask about at a log on today, oldest first."""
+    key = today.isoformat()
+    return [i for i, e in _pair_logs(state, goal, skill)
+            if is_open_fix(e) and e["date"] < key and key not in e.get("came_back", [])]
+
+
+def _answer_fix(entry, was_fixed, today):
+    if was_fixed:
+        entry["fixed"] = today.isoformat()
+    else:
+        entry.setdefault("came_back", []).append(today.isoformat())
+
+
+def open_fix(state, goal, skill):
+    """The newest open fix note for this pair (shown with its task), or None."""
+    notes = [e["fix"] for _, e in _pair_logs(state, goal, skill) if is_open_fix(e)]
+    return notes[-1] if notes else None
+
+
+def note_pairs(state):
+    """Active goal/skill pairs with at least one note, in roadmap order."""
+    return [p for p in work_options(state)
+            if any(has_notes(e) for _, e in _pair_logs(state, *p))]
+
+
+def fix_status(entry):
+    if "fixed" in entry:
+        return "fixed " + entry["fixed"]
+    times = len(entry.get("came_back", []))
+    if times:
+        return "came back {} time{}".format(times, "" if times == 1 else "s")
+    return "not checked yet"
+
+
+def note_groups(state, goal, skill):
+    """R11 look-back: the pair's fix notes as fixed / coming back / not checked."""
+    fixes = [e for _, e in _pair_logs(state, goal, skill) if e.get("fix")]
+    back = [e for e in fixes if "fixed" not in e and e.get("came_back")]
+    return {"fixed": [e for e in fixes if "fixed" in e],
+            "coming back": sorted(back, key=lambda e: -len(e["came_back"])),
+            "not checked": [e for e in fixes
+                            if "fixed" not in e and not e.get("came_back")]}
+
+
+def render_notes(state, goal, skill):
+    lines = ["Notes for {} ({})".format(skill, goal)]
+    for _, e in _pair_logs(state, goal, skill):
+        if not has_notes(e):
+            continue
+        lines.append("  {}".format(e["date"]))
+        if e.get("went_well"):
+            lines.append("    went well: {}".format(e["went_well"]))
+        if e.get("fix"):
+            lines.append("    to fix:    {}  [{}]".format(e["fix"], fix_status(e)))
+    groups = note_groups(state, goal, skill)
+    for title, key in (("Fixed", "fixed"), ("Keeps coming back", "coming back"),
+                       ("Not checked yet", "not checked")):
+        lines.append("{} ({}):".format(title, len(groups[key])))
+        for e in groups[key]:
+            lines.append("  - {} ({})".format(e["fix"], fix_status(e)))
+    return "\n".join(lines)
+
+
+def due_notes_reminder(state, today):
+    """R11: once per calendar month, remind the user to look back at older notes.
+
+    Returns True (and records the month) when the reminder should be shown now.
+    """
+    month = today.strftime("%Y-%m")
+    first = today.replace(day=1).isoformat()
+    if state.get("notes_reminder") == month:
+        return False
+    if not any(has_notes(e) and e["date"] < first for e in state["logs"]):
+        return False
+    state["notes_reminder"] = month
+    return True

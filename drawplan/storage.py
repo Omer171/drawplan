@@ -20,10 +20,11 @@ def new_state():
     # "targets" and "mastered_targets" (R8, round 4) hold hour targets the user set and
     # earlier targets of skills mastered before the target was raised.
     # "rest_days" (R10, round 5) lists planned rest days as sorted ISO dates.
+    # "notes_reminder" (R11, round 6) is the YYYY-MM of the last monthly notes reminder.
     return {"version": 1, "goals": [], "logs": [], "tasks": {},
             "task_minutes": START_TASK_MINUTES, "art": [], "comparisons": [],
             "summaries": [], "targets": {}, "mastered_targets": {},
-            "rest_days": []}
+            "rest_days": [], "notes_reminder": None}
 
 
 def data_path():
